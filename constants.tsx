@@ -13,7 +13,8 @@ import {
   History,
   ClipboardList,
   ShoppingBag,
-  Settings
+  Settings,
+  Tag
 } from 'lucide-react';
 import { PageId, NavItem } from './types';
 
@@ -24,6 +25,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: PageId.PENDING_RECIPES, label: 'Pending Recipes', icon: <ClipboardList size={20} /> },
   { id: PageId.INVENTORY, label: 'Inventory', icon: <Package size={20} /> },
   { id: PageId.PROCUREMENT, label: 'Procurement', icon: <ShoppingBag size={20} /> },
+  { id: PageId.BRANDS, label: 'Brand Management', icon: <Tag size={20} /> },
   { id: PageId.VENDORS, label: 'Vendors', icon: <Truck size={20} /> },
   { id: PageId.REPORTS, label: 'Reports', icon: <BarChart3 size={20} /> },
   { id: PageId.PO_SETTINGS, label: 'PO Template', icon: <Settings size={20} /> },

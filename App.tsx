@@ -14,6 +14,7 @@ import { Forecasting } from './components/Forecasting';
 import { VendorManagement } from './components/VendorManagement';
 import { POTemplateSettings } from './components/POTemplateSettings';
 import { UserManagement } from './components/UserManagement';
+import { BrandManagement } from './components/BrandManagement';
 import { Login } from './components/Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
@@ -127,6 +128,7 @@ const App: React.FC = () => {
       case PageId.PENDING_RECIPES: return <PendingRecipes />;
       case PageId.INVENTORY: return <InventoryManagement />;
       case PageId.PROCUREMENT: return <ProcurementManagement />;
+      case PageId.BRANDS: return <BrandManagement />;
       case PageId.VENDORS: return <VendorManagement />;
       case PageId.REPORTS: return <Forecasting />;
       case PageId.PO_SETTINGS: return <POTemplateSettings />;

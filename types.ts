@@ -11,7 +11,8 @@ export enum PageId {
   VENDORS = 'vendors',
   REPORTS = 'reports',
   USERS = 'users',
-  PO_SETTINGS = 'po_settings'
+  PO_SETTINGS = 'po_settings',
+  BRANDS = 'brands'
 }
 
 export type UserRole = 'owner' | 'staff';
@@ -29,6 +30,15 @@ export interface NavItem {
   label: string;
   icon: React.ReactNode;
   ownerOnly?: boolean; 
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  itemId: string; // Compulsory link to an item
+  itemName: string; // Denormalized name for display
+  description?: string;
+  category?: string;
 }
 
 export interface POTemplateConfig {
@@ -65,7 +75,7 @@ export interface ProductionPlan {
 export interface InventoryItem {
   id: string;
   name: string;
-  brand?: string; // New field for brand tracking
+  brand?: string; // Brand tracking
   category: string;
   quantity: number;
   unit: string;
@@ -80,7 +90,7 @@ export interface InventoryItem {
 
 export interface Ingredient {
   name: string;
-  brand?: string; // New field for recipe-specific brand requirements
+  brand?: string;
   amount: number;
   unit: string;
   inventoryItemId?: string;
@@ -109,7 +119,7 @@ export interface InventoryReservation {
 export interface PendingProcurement {
   id: string;
   ingredientName: string;
-  brand?: string; // Brand tracking for requests
+  brand?: string; 
   requiredQty: number;
   currentStock: number;
   shortageQty: number;
@@ -122,7 +132,7 @@ export interface PendingProcurement {
 
 export interface VendorPricePoint {
   itemName: string;
-  brand?: string; // Price points tied to specific brands
+  brand?: string; 
   price: number;
   unit: string;
 }
