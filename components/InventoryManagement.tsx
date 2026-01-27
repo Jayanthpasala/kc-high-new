@@ -62,13 +62,16 @@ export const InventoryManagement: React.FC = () => {
   const getStatus = (qty: number, par: number, reserved: number): InventoryItem['status'] => {
     const available = qty - (reserved || 0);
     if (available <= 0) return 'out';
-    if (available <= par) return 'low';
+    // 'low' status is only triggered if available stock is BELOW par level
+    if (available < par) return 'low';
     return 'healthy';
   };
 
   const handleSave = () => {
     if (!formData.name || !formData.supplier) { alert('Fill required fields'); return; }
-    const status = getStatus(formData.quantity || 0, formData.parLevel || 0, editingItem?.reserved || 0);
+    
+    const currentReserved = editingItem?.reserved || 0;
+    const status = getStatus(formData.quantity || 0, formData.parLevel || 0, currentReserved);
     const dateStr = new Date().toISOString().split('T')[0];
 
     if (editingItem) {
@@ -129,34 +132,40 @@ export const InventoryManagement: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredItems.map(item => (
-              <tr key={item.id} className="hover:bg-slate-50/50 group">
-                <td className="px-10 py-7">
-                  <p className="font-black text-slate-900 text-lg">{item.name}</p>
-                  <p className="text-[10px] text-slate-400 font-black uppercase mt-1">{item.supplier}</p>
-                </td>
-                <td className="px-8 py-7 font-bold text-slate-900">{item.quantity} <span className="text-xs text-slate-400">{item.unit}</span></td>
-                <td className="px-8 py-7">
-                  <div className="flex items-center gap-2 text-amber-600 font-bold">
-                    <Lock size={14} /> {item.reserved || 0} <span className="text-xs text-amber-400/60">{item.unit}</span>
-                  </div>
-                </td>
-                <td className="px-8 py-7">
-                    <p className={`text-lg font-black ${(item.quantity - (item.reserved || 0)) <= item.parLevel ? 'text-rose-500' : 'text-slate-900'}`}>
-                        {item.quantity - (item.reserved || 0)} <span className="text-xs text-slate-400">{item.unit}</span>
-                    </p>
-                </td>
-                <td className="px-8 py-7">
-                  <span className={`px-4 py-1.5 rounded-xl border-2 text-[10px] font-black uppercase ${getStatusStyles(item.status)}`}>{item.status}</span>
-                </td>
-                <td className="px-10 py-7 text-right">
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
-                        <button onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} className="p-3 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all"><Edit3 size={18} /></button>
-                        <button onClick={() => saveToStorage(items.filter(i => i.id !== item.id))} className="p-3 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all"><Trash2 size={18} /></button>
+            {filteredItems.map(item => {
+              // Calculate status dynamically for the UI to ensure accurate display
+              const currentStatus = getStatus(item.quantity, item.parLevel, item.reserved || 0);
+              const available = item.quantity - (item.reserved || 0);
+              
+              return (
+                <tr key={item.id} className="hover:bg-slate-50/50 group">
+                  <td className="px-10 py-7">
+                    <p className="font-black text-slate-900 text-lg">{item.name}</p>
+                    <p className="text-[10px] text-slate-400 font-black uppercase mt-1">{item.supplier}</p>
+                  </td>
+                  <td className="px-8 py-7 font-bold text-slate-900">{item.quantity} <span className="text-xs text-slate-400">{item.unit}</span></td>
+                  <td className="px-8 py-7">
+                    <div className="flex items-center gap-2 text-amber-600 font-bold">
+                      <Lock size={14} /> {item.reserved || 0} <span className="text-xs text-amber-400/60">{item.unit}</span>
                     </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="px-8 py-7">
+                      <p className={`text-lg font-black ${available < item.parLevel ? 'text-rose-500' : 'text-slate-900'}`}>
+                          {available} <span className="text-xs text-slate-400">{item.unit}</span>
+                      </p>
+                  </td>
+                  <td className="px-8 py-7">
+                    <span className={`px-4 py-1.5 rounded-xl border-2 text-[10px] font-black uppercase ${getStatusStyles(currentStatus)}`}>{currentStatus}</span>
+                  </td>
+                  <td className="px-10 py-7 text-right">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex justify-end gap-2">
+                          <button onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} className="p-3 hover:bg-emerald-50 text-slate-400 hover:text-emerald-600 rounded-xl transition-all"><Edit3 size={18} /></button>
+                          <button onClick={() => saveToStorage(items.filter(i => i.id !== item.id))} className="p-3 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl transition-all"><Trash2 size={18} /></button>
+                      </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

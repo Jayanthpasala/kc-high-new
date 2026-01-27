@@ -55,18 +55,16 @@ export interface Ingredient {
   name: string;
   amount: number;
   unit: string;
+  inventoryItemId?: string; // Explicit link to master inventory
 }
 
 export interface Recipe {
   id: string;
   name: string;
   category: string;
-  prepTime: number; // minutes
-  cookTime: number; // minutes
-  servings: number;
+  outputUnit: 'kg' | 'L'; // The base unit for the recipe conversion (per 1 unit)
   ingredients: Ingredient[];
   instructions: string[];
-  image?: string;
   difficulty: 'Easy' | 'Medium' | 'Hard';
 }
 

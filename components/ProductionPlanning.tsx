@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Upload, 
   CheckCircle2, 
@@ -19,9 +19,15 @@ import {
   Palmtree,
   Zap,
   CheckCircle,
-  Circle,
   CalendarDays,
-  ShoppingBag
+  ShoppingBag,
+  ArrowRight,
+  GripVertical,
+  ListFilter,
+  LayoutGrid,
+  CalendarCheck,
+  ClipboardList,
+  PlusCircle
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { PageId, ProductionPlan, Meal, PlanType, Recipe, InventoryItem, InventoryReservation, PendingProcurement } from '../types';
@@ -57,14 +63,20 @@ const mockFirestore = {
   }
 };
 
+type ViewMode = 'MONTH' | 'AGENDA';
+
 export const ProductionPlanning: React.FC = () => {
   const [view, setView] = useState<'CALENDAR' | 'UPLOAD' | 'REVIEW'>('CALENDAR');
+  const [viewMode, setViewMode] = useState<ViewMode>('MONTH');
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingPlans, setPendingPlans] = useState<ProductionPlan[]>([]);
   const [approvedPlans, setApprovedPlans] = useState<ProductionPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<ProductionPlan | null>(null);
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [activeTab, setActiveTab] = useState<'plan' | 'consumption' | 'history'>('plan');
+  const [draggedPlanId, setDraggedPlanId] = useState<string | null>(null);
+
+  const currentYear = new Date().getFullYear();
 
   const getLocalDateString = (date: Date) => {
     const year = date.getFullYear();
@@ -74,7 +86,7 @@ export const ProductionPlanning: React.FC = () => {
   };
 
   const updatePlans = () => {
-    setApprovedPlans(mockFirestore.getApproved());
+    setApprovedPlans(mockFirestore.getApproved().sort((a, b) => a.date.localeCompare(b.date)));
   };
 
   useEffect(() => {
@@ -89,73 +101,58 @@ export const ProductionPlanning: React.FC = () => {
     const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
     let reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
     let procurements: PendingProcurement[] = JSON.parse(localStorage.getItem('pendingProcurements') || '[]');
+    
+    // Identify recipes missing from the database
+    let pendingRecipes: string[] = JSON.parse(localStorage.getItem('pendingRecipes') || '[]');
 
     approvedPlans.forEach(plan => {
-      // Aggregate ingredients for this specific plan
       const dailyReqs: Record<string, { name: string, qty: number, unit: string }> = {};
-
       plan.meals.forEach(meal => {
         meal.dishes.forEach(dish => {
           const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
           if (recipe) {
             recipe.ingredients.forEach(ing => {
               const key = ing.name.toLowerCase();
-              if (!dailyReqs[key]) {
-                dailyReqs[key] = { name: ing.name, qty: 0, unit: ing.unit };
-              }
+              if (!dailyReqs[key]) dailyReqs[key] = { name: ing.name, qty: 0, unit: ing.unit };
               dailyReqs[key].qty += ing.amount;
             });
+          } else {
+            // Recipe missing! Add to pending list if not already there
+            if (!pendingRecipes.some(p => p.toLowerCase() === dish.toLowerCase())) {
+              pendingRecipes.push(dish);
+            }
           }
         });
       });
 
-      // Step 3 & 4: Check stock and reserve/procure
       Object.values(dailyReqs).forEach(req => {
         const invItem = inventory.find(i => i.name.toLowerCase() === req.name.toLowerCase());
         const currentStock = invItem ? invItem.quantity : 0;
         const currentReserved = invItem ? (invItem.reserved || 0) : 0;
         const available = currentStock - currentReserved;
 
-        // Create Reservation Document
         reservations.push({
-          id: generateId(),
-          planId: plan.id,
-          date: plan.date,
-          ingredientName: req.name,
-          quantity: req.qty,
-          unit: req.unit
+          id: generateId(), planId: plan.id, date: plan.date, ingredientName: req.name, quantity: req.qty, unit: req.unit
         });
 
-        // Update Inventory Object's reserved field for UI
         if (invItem) {
           invItem.reserved = (invItem.reserved || 0) + req.qty;
+          const availNow = invItem.quantity - invItem.reserved;
+          if (availNow <= 0) invItem.status = 'out';
+          else if (availNow < invItem.parLevel) invItem.status = 'low';
+          else invItem.status = 'healthy';
         }
 
-        // Check if shortage exists
         if (req.qty > available) {
           const shortage = req.qty - available;
-          
-          // Check for existing procurement entry to avoid duplicates
           const existingProc = procurements.find(p => p.ingredientName.toLowerCase() === req.name.toLowerCase() && p.status === 'pending');
-          
           if (existingProc) {
             existingProc.requiredQty += req.qty;
             existingProc.shortageQty += shortage;
-            // Update requiredByDate if this one is earlier
-            if (new Date(plan.date) < new Date(existingProc.requiredByDate)) {
-                existingProc.requiredByDate = plan.date;
-            }
+            if (new Date(plan.date) < new Date(existingProc.requiredByDate)) existingProc.requiredByDate = plan.date;
           } else {
             procurements.push({
-              id: generateId(),
-              ingredientName: req.name,
-              requiredQty: req.qty,
-              currentStock: currentStock,
-              shortageQty: shortage,
-              unit: req.unit,
-              requiredByDate: plan.date,
-              status: 'pending',
-              createdAt: Date.now()
+              id: generateId(), ingredientName: req.name, requiredQty: req.qty, currentStock, shortageQty: shortage, unit: req.unit, requiredByDate: plan.date, status: 'pending', createdAt: Date.now()
             });
           }
         }
@@ -165,6 +162,91 @@ export const ProductionPlanning: React.FC = () => {
     localStorage.setItem('inventory', JSON.stringify(inventory));
     localStorage.setItem('inventoryReservations', JSON.stringify(reservations));
     localStorage.setItem('pendingProcurements', JSON.stringify(procurements));
+    localStorage.setItem('pendingRecipes', JSON.stringify(pendingRecipes));
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  // --- REVIEW QUEUE EDIT HANDLERS ---
+  const updatePendingPlanDate = (idx: number, date: string) => {
+    const updated = [...pendingPlans];
+    updated[idx].date = date;
+    setPendingPlans(updated);
+  };
+
+  const updatePendingDish = (planIdx: number, mealIdx: number, dishIdx: number, value: string) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes[dishIdx] = value;
+    setPendingPlans(updated);
+  };
+
+  const addPendingDish = (planIdx: number, mealIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes.push("");
+    setPendingPlans(updated);
+  };
+
+  const removePendingDish = (planIdx: number, mealIdx: number, dishIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes = updated[planIdx].meals[mealIdx].dishes.filter((_, i) => i !== dishIdx);
+    setPendingPlans(updated);
+  };
+
+  const addPendingMeal = (planIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals.push({ mealType: "New Meal", dishes: [""] });
+    setPendingPlans(updated);
+  };
+
+  const removePendingMeal = (planIdx: number, mealIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals = updated[planIdx].meals.filter((_, i) => i !== mealIdx);
+    setPendingPlans(updated);
+  };
+
+  const updatePendingMealType = (planIdx: number, mealIdx: number, type: string) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].mealType = type;
+    setPendingPlans(updated);
+  };
+
+  const removePendingPlan = (idx: number) => {
+    setPendingPlans(pendingPlans.filter((_, i) => i !== idx));
+  };
+
+  // --- DRAG AND DROP HANDLERS ---
+  const handleDragStart = (e: React.DragEvent, planId: string) => {
+    setDraggedPlanId(planId);
+    e.dataTransfer.setData('planId', planId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDrop = (e: React.DragEvent, targetDate: string) => {
+    e.preventDefault();
+    const planId = e.dataTransfer.getData('planId');
+    if (!planId) return;
+
+    const allPlans = mockFirestore.getAll();
+    const planIndex = allPlans.findIndex(p => p.id === planId);
+    
+    if (planIndex > -1) {
+      const updatedPlan = { ...allPlans[planIndex], date: targetDate };
+      allPlans[planIndex] = updatedPlan;
+      localStorage.setItem('productionPlans', JSON.stringify(allPlans));
+      
+      // Also update reservations date if they exist
+      const reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
+      const updatedReservations = reservations.map(r => r.planId === planId ? { ...r, date: targetDate } : r);
+      localStorage.setItem('inventoryReservations', JSON.stringify(updatedReservations));
+      
+      updatePlans();
+      setDraggedPlanId(null);
+      window.dispatchEvent(new Event('storage'));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -175,18 +257,25 @@ export const ProductionPlanning: React.FC = () => {
       const base64 = await fileToBase64(file);
       const extractedData = await extractMenuWithAI(base64, file.type);
       const safeData = Array.isArray(extractedData) ? extractedData : [];
-      const newPlans: ProductionPlan[] = safeData.map((item: any) => ({
-        id: generateId(),
-        date: item.date || 'INVALID_DATE',
-        type: 'production',
-        meals: (item.meals || []).map((m: any) => ({
-          mealType: m.mealType || 'Meal',
-          dishes: Array.isArray(m.dishes) ? m.dishes : []
-        })),
-        isApproved: false,
-        isConsumed: false,
-        createdAt: Date.now()
-      }));
+      const newPlans: ProductionPlan[] = safeData.map((item: any) => {
+        let finalDate = item.date || 'INVALID_DATE';
+        if (finalDate !== 'INVALID_DATE') {
+          const d = new Date(finalDate.replace(/-/g, '/'));
+          if (isNaN(d.getTime()) || d.getFullYear() !== currentYear) {
+            const dateParts = finalDate.split('-');
+            if (dateParts.length >= 2) {
+              const month = dateParts[dateParts.length - 2];
+              const day = dateParts[dateParts.length - 1];
+              finalDate = `${currentYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+          }
+        }
+        return {
+          id: generateId(), date: finalDate, type: 'production', meals: (item.meals || []).map((m: any) => ({
+            mealType: m.mealType || 'Meal', dishes: Array.isArray(m.dishes) ? m.dishes : []
+          })), isApproved: false, isConsumed: false, createdAt: Date.now()
+        };
+      });
       setPendingPlans(newPlans);
       setView('REVIEW');
     } catch (error) {
@@ -251,10 +340,7 @@ export const ProductionPlanning: React.FC = () => {
       mockFirestore.save(fullPlan);
       approvedBatch.push(fullPlan);
     });
-
-    // Run the automated requirement and procurement logic
     runProcurementAutomation(approvedBatch);
-    
     setPendingPlans([]);
     updatePlans();
     setView('CALENDAR');
@@ -265,14 +351,11 @@ export const ProductionPlanning: React.FC = () => {
     const plan = approvedPlans.find(p => p.id === id);
     if (!plan) return;
     const newIsConsumed = !plan.isConsumed;
-
     if (newIsConsumed) {
       const recipes: Recipe[] = JSON.parse(localStorage.getItem('recipes') || '[]');
       const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
       let reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
-      
       let updatedInventory = [...inventory];
-
       plan.meals.forEach(meal => {
         meal.dishes.forEach(dish => {
           const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
@@ -280,29 +363,22 @@ export const ProductionPlanning: React.FC = () => {
             recipe.ingredients.forEach(ing => {
               const invItemIdx = updatedInventory.findIndex(item => item.name.toLowerCase() === ing.name.toLowerCase());
               if (invItemIdx > -1) {
-                // Deduct physical quantity
                 updatedInventory[invItemIdx].quantity = Math.max(0, updatedInventory[invItemIdx].quantity - ing.amount);
-                // Reduce reservation count
                 updatedInventory[invItemIdx].reserved = Math.max(0, (updatedInventory[invItemIdx].reserved || 0) - ing.amount);
-                
-                // Update item status
                 const item = updatedInventory[invItemIdx];
+                // Sync status with refined logic
                 if (item.quantity <= 0) item.status = 'out';
-                else if (item.quantity <= item.parLevel) item.status = 'low';
+                else if (item.quantity < item.parLevel) item.status = 'low';
                 else item.status = 'healthy';
               }
             });
           }
         });
       });
-
-      // Step 6: Clear associated reservations
       reservations = reservations.filter(r => r.planId !== plan.id);
-
       localStorage.setItem('inventory', JSON.stringify(updatedInventory));
       localStorage.setItem('inventoryReservations', JSON.stringify(reservations));
     }
-
     const updated = { ...plan, isConsumed: newIsConsumed };
     mockFirestore.save(updated);
     updatePlans();
@@ -324,108 +400,225 @@ export const ProductionPlanning: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-24">
-      <div className="flex justify-between items-end border-b border-slate-200 pb-6">
+    <div className="space-y-8 pb-24">
+      {/* Refined Header */}
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-             <CalendarDays className="text-emerald-500" size={32} />
-             Kitchen Calendar
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
+             <CalendarCheck className="text-emerald-500" size={32} />
+             Flexible Planner
           </h2>
-          <p className="text-slate-500 font-semibold mt-1">Automated ingredient planning & meal scheduling.</p>
+          <p className="text-slate-500 font-medium mt-1">Drag and drop to reschedule production cycles for {currentYear}.</p>
         </div>
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
+          {/* View Toggle */}
+          <div className="bg-white p-1 rounded-xl border border-slate-200 flex shadow-sm mr-2">
+            <button 
+              onClick={() => setViewMode('MONTH')}
+              className={`p-2 rounded-lg transition-all ${viewMode === 'MONTH' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900'}`}
+              title="Month View"
+            >
+              <LayoutGrid size={18} />
+            </button>
+            <button 
+              onClick={() => setViewMode('AGENDA')}
+              className={`p-2 rounded-lg transition-all ${viewMode === 'AGENDA' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900'}`}
+              title="Agenda View"
+            >
+              <ListFilter size={18} />
+            </button>
+          </div>
+
           {view !== 'CALENDAR' && (
-            <button onClick={() => setView('CALENDAR')} className="px-6 py-3 text-slate-700 bg-white border-2 border-slate-200 rounded-xl font-bold transition-all">Back</button>
+            <button onClick={() => setView('CALENDAR')} className="px-5 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest hover:border-slate-400 transition-all shadow-sm">
+              Back
+            </button>
           )}
-          <button onClick={() => setView('UPLOAD')} className="flex items-center space-x-2 bg-slate-900 text-white px-8 py-3 rounded-xl shadow-lg font-black transition-all">
-            <Upload size={20} /><span>Bulk Scan</span>
+          <button onClick={() => setView('UPLOAD')} className="flex items-center gap-2 bg-slate-900 text-white px-7 py-2.5 rounded-xl shadow-lg shadow-slate-900/10 font-bold text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all">
+            <Upload size={16} /> Scan Cycle
           </button>
         </div>
       </div>
 
       {isProcessing && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-          <div className="bg-white p-12 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center border-4 border-emerald-500">
-            <Loader2 size={48} className="text-emerald-500 animate-spin mx-auto mb-6" />
-            <h3 className="text-2xl font-black text-slate-900">Automation Engine...</h3>
-            <p className="text-slate-500 mt-2 font-bold text-xs uppercase tracking-widest">Calculating Stock & Procurement</p>
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-500">
+          <div className="bg-white p-12 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center border border-slate-100">
+            <div className="relative w-20 h-20 mx-auto mb-6">
+              <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-25"></div>
+              <Loader2 size={80} className="text-emerald-500 animate-spin relative z-10" />
+            </div>
+            <h3 className="text-2xl font-bold text-slate-900">Updating Schedules</h3>
+            <p className="text-slate-500 mt-2 font-semibold text-xs uppercase tracking-[0.2em]">Recalculating Stock Needs</p>
           </div>
         </div>
       )}
 
       {view === 'UPLOAD' && (
-        <div className="bg-white border-4 border-dashed border-slate-200 rounded-[3rem] p-20 text-center hover:border-emerald-500 transition-all bg-slate-50/30">
-          <div className="bg-emerald-100 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8"><CalendarIcon className="text-emerald-600" size={40} /></div>
-          <h3 className="text-3xl font-black text-slate-900">Upload Menu Plan</h3>
-          <p className="text-slate-600 max-w-md mx-auto mt-4 font-bold text-lg leading-relaxed">System will auto-link recipes and calculate total ingredient requirements.</p>
+        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-24 text-center hover:border-emerald-500/50 hover:bg-emerald-50/10 transition-all group">
+          <div className="bg-emerald-50 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-emerald-100 group-hover:scale-110 transition-transform duration-500">
+            <CalendarIcon className="text-emerald-600" size={40} />
+          </div>
+          <h3 className="text-3xl font-bold text-slate-900 tracking-tight">Import {currentYear} Menu</h3>
+          <p className="text-slate-500 max-w-md mx-auto mt-4 font-medium text-lg leading-relaxed">
+            AI handles the parsing. You handle the prep.
+          </p>
           <input type="file" id="menu-upload" className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
-          <label htmlFor="menu-upload" className="mt-10 inline-block cursor-pointer bg-slate-900 text-white px-12 py-5 rounded-2xl font-black text-lg hover:bg-emerald-600 transition-all shadow-xl">Start Scan</label>
+          <label htmlFor="menu-upload" className="mt-12 inline-flex items-center gap-3 cursor-pointer bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl">
+            Select Document <ArrowRight size={18} />
+          </label>
         </div>
       )}
 
       {view === 'REVIEW' && (
-        <div className="space-y-10 animate-in fade-in duration-300">
-          <div className="bg-slate-900 text-white p-8 rounded-[2rem] flex items-center justify-between shadow-xl">
-             <div className="flex items-center space-x-5"><AlertCircle className="text-emerald-400" size={32} /><p className="font-black text-xl uppercase tracking-tight">Requirement Forecast Review</p></div>
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+          <div className="bg-slate-900 p-8 rounded-[2rem] flex items-center justify-between shadow-2xl border border-slate-800">
+             <div className="flex items-center space-x-5">
+               <div className="bg-emerald-500/20 p-2 rounded-xl border border-emerald-500/30">
+                 <AlertCircle className="text-emerald-400" size={24} />
+               </div>
+               <div>
+                 <p className="font-bold text-xl text-white tracking-tight uppercase">Bulk Approval Queue</p>
+                 <p className="text-slate-400 text-xs font-semibold">Verify and edit parsed cycles before finalizing.</p>
+               </div>
+             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {pendingPlans.map((plan, idx) => (
-              <div key={idx} className="bg-white p-8 rounded-3xl border-2 border-slate-100 shadow-sm">
-                 <input type="date" value={plan.date} onChange={(e) => {
-                   const updated = [...pendingPlans];
-                   updated[idx].date = e.target.value;
-                   setPendingPlans(updated);
-                 }} className="font-black text-lg mb-4 p-2 border-b-2 border-slate-200 outline-none w-full" />
-                 {plan.meals.map((m, mi) => (
-                   <div key={mi} className="mb-4">
-                     <p className="text-xs font-black text-emerald-600 uppercase mb-2">{m.mealType}</p>
-                     <ul className="space-y-1">{m.dishes.map((d, di) => <li key={di} className="text-sm font-bold text-slate-700">• {d}</li>)}</ul>
-                   </div>
-                 ))}
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {pendingPlans.map((plan, planIdx) => (
+              <div key={planIdx} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-emerald-200 transition-all group flex flex-col h-full">
+                 <div className="flex items-center justify-between mb-6">
+                    <input 
+                      type="date" 
+                      value={plan.date} 
+                      onChange={(e) => updatePendingPlanDate(planIdx, e.target.value)} 
+                      className="font-bold text-lg p-1 bg-slate-50 rounded-lg border-none outline-none text-slate-900 focus:text-emerald-600 focus:bg-emerald-50 transition-all" 
+                    />
+                    <button onClick={() => removePendingPlan(planIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={16} /></button>
+                 </div>
+                 
+                 <div className="flex-1 space-y-5">
+                   {plan.meals.map((m, mealIdx) => (
+                     <div key={mealIdx} className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100 relative group/meal">
+                       <div className="flex items-center justify-between mb-4">
+                         <input 
+                            type="text" 
+                            value={m.mealType} 
+                            onChange={(e) => updatePendingMealType(planIdx, mealIdx, e.target.value)}
+                            className="text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-transparent border-none p-0 focus:ring-0 w-2/3" 
+                         />
+                         <button onClick={() => removePendingMeal(planIdx, mealIdx)} className="opacity-0 group-hover/meal:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"><X size={12} /></button>
+                       </div>
+                       
+                       <div className="space-y-3">
+                         {m.dishes.map((d, dishIdx) => (
+                           <div key={dishIdx} className="flex items-center gap-2 group/dish">
+                             <div className="w-1.5 h-1.5 bg-slate-300 rounded-full shrink-0"></div>
+                             <input 
+                               type="text" 
+                               value={d} 
+                               placeholder="Enter dish name..."
+                               onChange={(e) => updatePendingDish(planIdx, mealIdx, dishIdx, e.target.value)}
+                               className="flex-1 bg-transparent border-none text-sm font-semibold text-slate-700 p-0 focus:ring-0 placeholder:text-slate-300" 
+                             />
+                             <button onClick={() => removePendingDish(planIdx, mealIdx, dishIdx)} className="opacity-0 group-hover/dish:opacity-100 p-1 text-slate-300 hover:text-rose-500"><Trash2 size={12} /></button>
+                           </div>
+                         ))}
+                         <button onClick={() => addPendingDish(planIdx, mealIdx)} className="flex items-center gap-2 text-[10px] font-black text-slate-400 hover:text-emerald-500 uppercase tracking-widest pt-2 transition-all">
+                           <Plus size={12} /> Add Dish
+                         </button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+
+                 <button onClick={() => addPendingMeal(planIdx)} className="mt-6 w-full py-3 rounded-2xl border-2 border-dashed border-slate-100 text-slate-400 hover:border-emerald-200 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
+                   <Plus size={14} /> Add Meal Segment
+                 </button>
               </div>
             ))}
+            
+            {pendingPlans.length === 0 && (
+              <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                <ChefHat size={48} className="mx-auto text-slate-200 mb-4" />
+                <h4 className="text-xl font-bold text-slate-900">Review queue empty</h4>
+                <p className="text-slate-500 text-sm mt-1">Upload a menu to begin processing new cycles.</p>
+              </div>
+            )}
           </div>
-          <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60]">
-             <button onClick={handleApproveAll} className="bg-emerald-500 text-slate-900 px-12 py-5 rounded-2xl font-black uppercase shadow-2xl hover:scale-105 transition-all flex items-center gap-3">
-               <CheckCircle2 /> Approve & Plan Procurement
+          
+          <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] flex gap-4">
+             <button onClick={() => setPendingPlans([])} className="bg-white text-slate-600 px-8 py-5 rounded-3xl font-bold uppercase tracking-widest text-sm shadow-2xl hover:bg-slate-50 transition-all border border-slate-200">
+               Discard All
+             </button>
+             <button onClick={handleApproveAll} className="bg-emerald-500 text-slate-950 px-12 py-5 rounded-3xl font-bold uppercase tracking-widest text-sm shadow-2xl hover:scale-105 transition-all flex items-center gap-3 border-2 border-emerald-400 shadow-emerald-500/20">
+               <CheckCircle2 size={18} /> Approve All & Sync Inventory
              </button>
           </div>
         </div>
       )}
 
-      {view === 'CALENDAR' && (
-        <div className="bg-white rounded-[2.5rem] shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
+      {view === 'CALENDAR' && viewMode === 'MONTH' && (
+        <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] border border-slate-200 overflow-hidden flex flex-col">
           <div className="p-8 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center bg-slate-50/40 gap-6">
-            <h3 className="text-3xl font-black text-slate-900 tracking-tighter">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
-            <div className="flex items-center bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all"><ChevronLeft size={24} /></button>
-              <button onClick={() => setCurrentMonth(new Date())} className="px-6 py-2 text-xs font-black uppercase tracking-widest text-slate-800">Today</button>
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all"><ChevronRight size={24} /></button>
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
+              {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
+            </h3>
+            <div className="flex items-center bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
+              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-slate-900"><ChevronLeft size={20} /></button>
+              <button onClick={() => setCurrentMonth(new Date())} className="px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-600 transition-colors">Today</button>
+              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-slate-900"><ChevronRight size={20} /></button>
             </div>
           </div>
           <div className="grid grid-cols-7 border-b border-slate-100 bg-white">
-            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (<div key={day} className="py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">{day}</div>))}
+            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+              <div key={day} className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">{day}</div>
+            ))}
           </div>
           <div className="grid grid-cols-7 bg-slate-50/20">
             {calendarDays.map((date, i) => {
               const plan = date ? getPlanForDate(date) : null;
               const isToday = date?.toDateString() === new Date().toDateString();
+              const dateStr = date ? getLocalDateString(date) : '';
               let bgColor = 'bg-white';
-              if (plan?.isConsumed) bgColor = 'bg-slate-100';
+              if (plan?.isConsumed) bgColor = 'bg-slate-100/50';
+
               return (
-                <div key={i} className={`min-h-[160px] border-r border-b border-slate-100 p-4 transition-all relative group cursor-pointer ${!date ? 'bg-slate-50/10' : `${bgColor} hover:brightness-95`}`}
-                  onClick={() => date && plan && setSelectedPlan(plan)}>
+                <div 
+                  key={i} 
+                  className={`min-h-[160px] border-r border-b border-slate-100/80 p-4 transition-all relative group cursor-pointer ${!date ? 'bg-slate-50/30' : `${bgColor} hover:bg-emerald-50/20`}`}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => date && handleDrop(e, dateStr)}
+                  onClick={() => date && plan && setSelectedPlan(plan)}
+                >
                   {date && (
                     <>
-                      <div className="flex justify-between items-start mb-2">
-                        <span className={`text-sm font-black w-8 h-8 flex items-center justify-center rounded-xl ${isToday ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-400 group-hover:text-slate-900'}`}>{date.getDate()}</span>
-                        {plan && <div className="p-1.5 rounded-lg text-white shadow-sm bg-emerald-500"><ChefHat size={12} /></div>}
+                      <div className="flex justify-between items-start mb-2 pointer-events-none">
+                        <span className={`text-sm font-bold w-9 h-9 flex items-center justify-center rounded-xl transition-all ${isToday ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 group-hover:text-slate-900'}`}>{date.getDate()}</span>
+                        {plan && <div className="p-2 rounded-xl text-white shadow-lg bg-emerald-500"><ChefHat size={14} /></div>}
                       </div>
-                      <div className="space-y-1">
-                        {plan?.meals.slice(0, 3).map((m, idx) => (
-                          <div key={idx} className="text-[9px] font-black uppercase text-slate-500 truncate flex items-center"><span className="w-1 h-3 mr-1 rounded-full bg-emerald-500"></span>{m.mealType}</div>
-                        ))}
-                        {plan?.isConsumed && <div className="mt-2 flex items-center text-[10px] font-black text-emerald-600 uppercase"><CheckCircle size={12} className="mr-1" /> Prepared</div>}
+                      <div className="space-y-1.5 mt-3">
+                        {plan && (
+                          <div 
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, plan.id)}
+                            className={`p-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md active:scale-95 cursor-grab active:cursor-grabbing ${plan.isConsumed ? 'bg-slate-50 opacity-60' : 'bg-white group-hover:border-emerald-200'}`}
+                          >
+                             <div className="flex items-center gap-1.5 mb-1.5">
+                                <GripVertical size={10} className="text-slate-300" />
+                                <span className="text-[10px] font-bold uppercase text-slate-900 tracking-tight">Cycle Active</span>
+                             </div>
+                             {plan.meals.slice(0, 1).map((m, idx) => (
+                                <div key={idx} className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                                   <Zap size={8} className="text-emerald-500" /> {m.mealType}
+                                </div>
+                             ))}
+                          </div>
+                        )}
+                        {!plan && (
+                          <div className="hidden group-hover:flex items-center justify-center py-6 animate-in fade-in">
+                             <Plus size={16} className="text-slate-300" />
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
@@ -436,45 +629,129 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
+      {view === 'CALENDAR' && viewMode === 'AGENDA' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
+           {approvedPlans.length > 0 ? (
+             <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm divide-y">
+                {approvedPlans.map((plan) => (
+                  <div 
+                    key={plan.id} 
+                    className="p-8 hover:bg-slate-50 transition-all group flex flex-col md:flex-row gap-8 items-start cursor-pointer"
+                    onClick={() => setSelectedPlan(plan)}
+                  >
+                    <div className="flex items-center gap-6 min-w-[200px]">
+                       <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black ${plan.isConsumed ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
+                          <span className="text-xs uppercase tracking-widest">{new Date(plan.date.replace(/-/g, '/')).toLocaleString('default', { month: 'short' })}</span>
+                          <span className="text-xl leading-none">{new Date(plan.date.replace(/-/g, '/')).getDate()}</span>
+                       </div>
+                       <div>
+                          <p className="font-bold text-slate-900 text-lg">{new Date(plan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long' })}</p>
+                          <p className={`text-[10px] font-bold uppercase tracking-widest ${plan.isConsumed ? 'text-slate-400' : 'text-emerald-500'}`}>
+                             {plan.isConsumed ? 'Prep Complete' : 'Production Active'}
+                          </p>
+                       </div>
+                    </div>
+                    
+                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                       {plan.meals.map((meal, idx) => (
+                         <div key={idx} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm group-hover:border-slate-200 transition-all">
+                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{meal.mealType}</p>
+                            <div className="flex flex-wrap gap-1.5">
+                               {meal.dishes.map((dish, di) => (
+                                 <span key={di} className="text-xs font-semibold bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">{dish}</span>
+                               ))}
+                            </div>
+                         </div>
+                       ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 self-center">
+                       <button className="p-3 text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all">
+                          <Edit3 size={18} />
+                       </button>
+                    </div>
+                  </div>
+                ))}
+             </div>
+           ) : (
+             <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
+                <div className="bg-slate-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 text-slate-300 shadow-sm"><ClipboardList size={40} /></div>
+                <h4 className="text-2xl font-black text-slate-900">No active cycles</h4>
+                <p className="text-slate-500 font-bold mt-2">Switch to scan mode to import your weekly menus.</p>
+             </div>
+           )}
+        </div>
+      )}
+
       {selectedPlan && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-xl">
-          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-300">
-            <div className="bg-slate-900 p-10 text-white flex justify-between items-center">
-              <h3 className="text-4xl font-black">{new Date(selectedPlan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
-              <button onClick={() => setSelectedPlan(null)} className="p-3 bg-white/10 hover:bg-rose-500 rounded-2xl transition-all"><X size={24} /></button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-500">
+            <div className="bg-slate-900 p-10 text-white flex justify-between items-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
+              <div className="relative z-10">
+                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.4em] mb-3">Cycle Manager</p>
+                <h3 className="text-4xl font-bold tracking-tight">{new Date(selectedPlan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</h3>
+              </div>
+              <button onClick={() => setSelectedPlan(null)} className="p-4 bg-white/10 hover:bg-rose-500 text-white rounded-2xl transition-all relative z-10"><X size={24} /></button>
             </div>
-            <div className="flex border-b-2 border-slate-100 bg-slate-50 px-6">
-              {[{ id: 'plan', label: 'Production', icon: <ChefHat size={16} /> }, { id: 'consumption', label: 'Prep Confirmation', icon: <Zap size={16} /> }].map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-6 py-4 flex items-center space-x-2 text-xs font-black uppercase tracking-widest transition-all border-b-4 ${activeTab === tab.id ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400'}`}>
+            <div className="flex border-b border-slate-100 bg-slate-50/50 px-6">
+              {[
+                { id: 'plan', label: 'Cycle Items', icon: <ChefHat size={16} /> }, 
+                { id: 'consumption', label: 'Ready for Service', icon: <Zap size={16} /> }
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-8 py-5 flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === tab.id ? 'border-emerald-500 text-emerald-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
                   {tab.icon}<span>{tab.label}</span>
                 </button>
               ))}
             </div>
             <div className="p-10 max-h-[50vh] overflow-y-auto">
               {activeTab === 'plan' && (
-                <div className="space-y-8">
+                <div className="space-y-6">
                   {selectedPlan.meals.map((meal, i) => (
-                    <div key={i} className="bg-slate-50 p-6 rounded-[2rem] border-2 border-white shadow-sm">
-                      <h4 className="text-xl font-black text-slate-800 mb-4">{meal.mealType}</h4>
-                      <div className="flex flex-wrap gap-2">{meal.dishes.map((dish, di) => (<div key={di} className="px-4 py-2 rounded-xl text-sm font-bold shadow-sm bg-white border border-slate-100">{dish}</div>))}</div>
+                    <div key={i} className="bg-slate-50 p-7 rounded-[2rem] border border-slate-100 shadow-sm">
+                      <h4 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>{meal.mealType}</h4>
+                      <div className="flex flex-wrap gap-2.5">
+                        {meal.dishes.map((dish, di) => (
+                          <div key={di} className="px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm bg-white border border-slate-100 text-slate-700">{dish}</div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
               )}
               {activeTab === 'consumption' && (
-                <div className="space-y-6">
-                  <div className="bg-slate-900 text-white p-8 rounded-[2rem] flex items-center justify-between">
-                    <div><h4 className="text-2xl font-black">Mark as Prepared</h4><p className="text-slate-400 font-bold">Confirms usage of reserved ingredients.</p></div>
-                    <button onClick={() => toggleConsumption(selectedPlan.id)} className={`w-16 h-8 rounded-full transition-all relative border-2 ${selectedPlan.isConsumed ? 'bg-emerald-500 border-emerald-400' : 'bg-slate-800 border-slate-700'}`}>
-                      <div className={`absolute top-1 w-5 h-5 rounded-full bg-white shadow-md transition-all ${selectedPlan.isConsumed ? 'left-9' : 'left-1'}`}></div>
+                <div className="space-y-8 py-4">
+                  <div className="bg-[#1e293b] text-white p-10 rounded-[2.5rem] flex items-center justify-between shadow-xl">
+                    <div className="space-y-1">
+                      <h4 className="text-2xl font-bold">Cycle Completion</h4>
+                      <p className="text-slate-400 font-medium">Finalize production to update master inventory.</p>
+                    </div>
+                    <button 
+                      onClick={() => toggleConsumption(selectedPlan.id)} 
+                      className={`w-20 h-10 rounded-full transition-all duration-500 relative border-2 ${selectedPlan.isConsumed ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-slate-700 border-slate-600'}`}
+                    >
+                      <div className={`absolute top-1.5 w-6 h-6 rounded-full bg-white shadow-xl transition-all duration-500 ${selectedPlan.isConsumed ? 'left-12' : 'left-1.5'}`}></div>
                     </button>
                   </div>
-                  {selectedPlan.isConsumed && <div className="p-8 border-2 border-emerald-100 bg-emerald-50 rounded-[2rem] flex items-center text-emerald-700 font-black uppercase text-sm"><CheckCircle className="mr-2" /> Stock Deducted & Reservation Cleared</div>}
+                  {selectedPlan.isConsumed && (
+                    <div className="p-10 border border-emerald-100 bg-emerald-50/50 rounded-[2.5rem] flex flex-col items-center text-center space-y-4 animate-in zoom-in-95 duration-500">
+                      <div className="bg-emerald-100 p-4 rounded-full text-emerald-600"><CheckCircle size={40} /></div>
+                      <h4 className="text-xl font-bold text-emerald-900">Successfully Recorded</h4>
+                      <p className="text-emerald-700/70 font-medium text-sm max-w-sm">Stock levels adjusted and prep logs archived.</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-            <div className="p-10 border-t-2 border-slate-100 bg-slate-50 flex justify-end">
-               <button onClick={() => setSelectedPlan(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-600 transition-all">Close</button>
+            <div className="p-10 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
+               <button onClick={() => {
+                 if(confirm("Permanently remove this cycle?")) {
+                   mockFirestore.delete(selectedPlan.id);
+                   updatePlans();
+                   setSelectedPlan(null);
+                 }
+               }} className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">Remove</button>
+               <button onClick={() => setSelectedPlan(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-600 transition-all">Close</button>
             </div>
           </div>
         </div>
