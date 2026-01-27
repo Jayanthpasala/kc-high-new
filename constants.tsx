@@ -10,7 +10,8 @@ import {
   Users,
   ChefHat,
   AlertTriangle,
-  History
+  History,
+  ClipboardList
 } from 'lucide-react';
 import { PageId, NavItem } from './types';
 
@@ -18,6 +19,7 @@ export const NAV_ITEMS: NavItem[] = [
   { id: PageId.DASHBOARD, label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
   { id: PageId.PRODUCTION, label: 'Production Planning', icon: <CalendarRange size={20} /> },
   { id: PageId.RECIPES, label: 'Recipes', icon: <BookOpen size={20} /> },
+  { id: PageId.PENDING_RECIPES, label: 'Pending Recipes', icon: <ClipboardList size={20} /> },
   { id: PageId.INVENTORY, label: 'Inventory', icon: <Package size={20} /> },
   { id: PageId.VENDORS, label: 'Vendors', icon: <Truck size={20} /> },
   { id: PageId.REPORTS, label: 'Reports', icon: <BarChart3 size={20} /> },
