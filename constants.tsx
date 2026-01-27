@@ -11,7 +11,9 @@ import {
   ChefHat,
   AlertTriangle,
   History,
-  ClipboardList
+  ClipboardList,
+  ShoppingBag,
+  Settings
 } from 'lucide-react';
 import { PageId, NavItem } from './types';
 
@@ -21,9 +23,11 @@ export const NAV_ITEMS: NavItem[] = [
   { id: PageId.RECIPES, label: 'Recipes', icon: <BookOpen size={20} /> },
   { id: PageId.PENDING_RECIPES, label: 'Pending Recipes', icon: <ClipboardList size={20} /> },
   { id: PageId.INVENTORY, label: 'Inventory', icon: <Package size={20} /> },
+  { id: PageId.PROCUREMENT, label: 'Procurement', icon: <ShoppingBag size={20} /> },
   { id: PageId.VENDORS, label: 'Vendors', icon: <Truck size={20} /> },
   { id: PageId.REPORTS, label: 'Reports', icon: <BarChart3 size={20} /> },
-  { id: PageId.USERS, label: 'User Management', icon: <Users size={20} /> },
+  { id: PageId.PO_SETTINGS, label: 'PO Template', icon: <Settings size={20} /> },
+  { id: PageId.USERS, label: 'User Management', icon: <Users size={20} />, ownerOnly: true },
 ];
 
 export const DASHBOARD_CARDS = [

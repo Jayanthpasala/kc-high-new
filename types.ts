@@ -7,15 +7,39 @@ export enum PageId {
   RECIPES = 'recipes',
   PENDING_RECIPES = 'pending_recipes',
   INVENTORY = 'inventory',
+  PROCUREMENT = 'procurement',
   VENDORS = 'vendors',
   REPORTS = 'reports',
-  USERS = 'users'
+  USERS = 'users',
+  PO_SETTINGS = 'po_settings'
+}
+
+export type UserRole = 'owner' | 'staff';
+
+export interface UserProfile {
+  uid: string;
+  email: string;
+  role: UserRole;
+  displayName?: string;
+  createdAt: number;
 }
 
 export interface NavItem {
   id: PageId;
   label: string;
   icon: React.ReactNode;
+  ownerOnly?: boolean; // New field for role-based navigation
+}
+
+export interface POTemplateConfig {
+  companyName: string;
+  address: string;
+  gstin: string;
+  pan: string;
+  email: string;
+  phone: string;
+  logoUrl?: string;
+  terms: string;
 }
 
 export type PlanType = 'production' | 'holiday' | 'event';
@@ -44,25 +68,27 @@ export interface InventoryItem {
   category: string;
   quantity: number;
   unit: string;
-  parLevel: number;
+  reorderLevel: number; 
+  expiryDate?: string;   
   lastRestocked: string;
   status: 'healthy' | 'low' | 'out';
   supplier: string;
-  reserved?: number; // New field for reserved stock
+  reserved?: number;
+  lastPrice?: number;
 }
 
 export interface Ingredient {
   name: string;
   amount: number;
   unit: string;
-  inventoryItemId?: string; // Explicit link to master inventory
+  inventoryItemId?: string;
 }
 
 export interface Recipe {
   id: string;
   name: string;
   category: string;
-  outputUnit: 'kg' | 'L'; // The base unit for the recipe conversion (per 1 unit)
+  outputUnit: 'kg' | 'L';
   ingredients: Ingredient[];
   instructions: string[];
   difficulty: 'Easy' | 'Medium' | 'Hard';
@@ -87,21 +113,40 @@ export interface PendingProcurement {
   requiredByDate: string;
   status: 'pending' | 'ordered' | 'received';
   createdAt: number;
+  isManual?: boolean;
+}
+
+export interface VendorPricePoint {
+  itemName: string;
+  price: number;
+  unit: string;
 }
 
 export interface Vendor {
   id: string;
   name: string;
   contact: string;
+  email: string;
+  phone: string;
   categories: string[];
   rating: number;
+  bankDetails: {
+    bankName: string;
+    accountName: string;
+    accountNumber: string;
+    ifscCode: string;
+  };
+  suppliedItems: string[];
+  priceLedger?: VendorPricePoint[];
 }
 
 export interface PurchaseOrder {
   id: string;
   vendorId: string;
-  items: { ingredientName: string; quantity: number; unit: string }[];
+  vendorName: string;
+  items: { ingredientName: string; quantity: number; unit: string; priceAtOrder?: number }[];
   expectedDeliveryDate: string;
-  status: 'draft' | 'ordered' | 'received';
+  status: 'draft' | 'pending' | 'received'; 
   createdAt: number;
+  totalCost?: number;
 }

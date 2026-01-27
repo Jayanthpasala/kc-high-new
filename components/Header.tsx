@@ -1,8 +1,10 @@
 
 import React from 'react';
-import { Search, Bell, UserCircle, Menu } from 'lucide-react';
+import { Search, Bell, UserCircle, Menu, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '../constants';
 import { PageId } from '../types';
+import { auth } from '../firebase';
+import { signOut } from 'firebase/auth';
 
 interface HeaderProps {
   activePage: PageId;
@@ -12,6 +14,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, onMenuClick }) => {
   const currentPage = NAV_ITEMS.find(item => item.id === activePage);
+  const user = auth.currentUser;
 
   return (
     <header 
@@ -36,7 +39,7 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
           <Search size={16} className="text-slate-400" />
           <input 
             type="text" 
-            placeholder="Search..." 
+            placeholder="Search master records..." 
             className="bg-transparent border-none focus:outline-none focus:ring-0 ml-2 text-sm text-slate-600 w-full"
           />
         </div>
@@ -44,17 +47,24 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
         <div className="flex items-center space-x-2 md:space-x-4">
           <button className="p-2 text-slate-400 hover:text-emerald-600 transition-colors relative">
             <Bell size={20} />
-            <span className="absolute top-2 right-2 bg-red-500 w-2 h-2 rounded-full border-2 border-white"></span>
+            <span className="absolute top-2 right-2 bg-rose-500 w-2 h-2 rounded-full border-2 border-white"></span>
           </button>
           
           <div className="flex items-center space-x-3 pl-2 md:pl-4 border-l border-slate-200">
             <div className="text-right hidden lg:block">
-              <p className="text-sm font-bold text-slate-900 leading-none">Chef Ramsay</p>
-              <p className="text-[10px] font-black uppercase text-slate-400 mt-1 tracking-widest">Kitchen Manager</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">{user?.displayName || user?.email?.split('@')[0] || 'Chef User'}</p>
+              <p className="text-[10px] font-black uppercase text-slate-400 mt-1 tracking-widest">Authorized Staff</p>
             </div>
+            <button 
+              onClick={() => signOut(auth)}
+              className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
+              title="End Session"
+            >
+              <LogOut size={20} />
+            </button>
             <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm ring-2 ring-slate-50">
               <img 
-                src="https://picsum.photos/seed/chef/100/100" 
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'Ajay'}`} 
                 alt="User Avatar" 
                 className="w-full h-full object-cover"
               />

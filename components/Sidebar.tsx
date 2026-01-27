@@ -2,7 +2,7 @@
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChefHat, X } from 'lucide-react';
 import { NAV_ITEMS } from '../constants';
-import { PageId } from '../types';
+import { PageId, UserRole } from '../types';
 
 interface SidebarProps {
   activePage: PageId;
@@ -11,6 +11,7 @@ interface SidebarProps {
   setIsCollapsed: (collapsed: boolean) => void;
   isMobileOpen?: boolean;
   setIsMobileOpen?: (open: boolean) => void;
+  userRole: UserRole;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -19,8 +20,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed, 
   setIsCollapsed,
   isMobileOpen = false,
-  setIsMobileOpen
+  setIsMobileOpen,
+  userRole
 }) => {
+  const visibleItems = NAV_ITEMS.filter(item => !item.ownerOnly || userRole === 'owner');
+
   return (
     <div 
       className={`bg-[#0f172a] text-slate-400 h-screen transition-all duration-500 ease-in-out flex flex-col fixed left-0 top-0 z-50 shadow-2xl
@@ -50,7 +54,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Nav Menu */}
       <nav className="flex-1 py-6 px-3 space-y-1.5 overflow-y-auto custom-scrollbar">
-        {NAV_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = activePage === item.id;
           return (
             <button

@@ -33,7 +33,8 @@ export const Dashboard: React.FC = () => {
                   <p className="text-sm text-slate-500 font-medium leading-relaxed max-w-[200px]">{card.description}</p>
                 </div>
                 <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-100 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300">
-                  {React.cloneElement(card.icon as React.ReactElement, { size: 20 })}
+                  {/* Added generic type <any> to fix 'size' property error on cloneElement */}
+                  {React.cloneElement(card.icon as React.ReactElement<any>, { size: 20 })}
                 </div>
               </div>
               

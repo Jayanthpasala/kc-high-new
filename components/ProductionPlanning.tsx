@@ -139,7 +139,8 @@ export const ProductionPlanning: React.FC = () => {
           invItem.reserved = (invItem.reserved || 0) + req.qty;
           const availNow = invItem.quantity - invItem.reserved;
           if (availNow <= 0) invItem.status = 'out';
-          else if (availNow < invItem.parLevel) invItem.status = 'low';
+          // Fixed: Changed parLevel to reorderLevel
+          else if (availNow < invItem.reorderLevel) invItem.status = 'low';
           else invItem.status = 'healthy';
         }
 
@@ -366,9 +367,9 @@ export const ProductionPlanning: React.FC = () => {
                 updatedInventory[invItemIdx].quantity = Math.max(0, updatedInventory[invItemIdx].quantity - ing.amount);
                 updatedInventory[invItemIdx].reserved = Math.max(0, (updatedInventory[invItemIdx].reserved || 0) - ing.amount);
                 const item = updatedInventory[invItemIdx];
-                // Sync status with refined logic
+                // Fixed: Changed parLevel to reorderLevel
                 if (item.quantity <= 0) item.status = 'out';
-                else if (item.quantity < item.parLevel) item.status = 'low';
+                else if (item.quantity < item.reorderLevel) item.status = 'low';
                 else item.status = 'healthy';
               }
             });
