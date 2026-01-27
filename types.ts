@@ -65,6 +65,7 @@ export interface ProductionPlan {
 export interface InventoryItem {
   id: string;
   name: string;
+  brand?: string; // New field for brand tracking
   category: string;
   quantity: number;
   unit: string;
@@ -79,6 +80,7 @@ export interface InventoryItem {
 
 export interface Ingredient {
   name: string;
+  brand?: string; // New field for recipe-specific brand requirements
   amount: number;
   unit: string;
   inventoryItemId?: string;
@@ -107,6 +109,7 @@ export interface InventoryReservation {
 export interface PendingProcurement {
   id: string;
   ingredientName: string;
+  brand?: string; // Brand tracking for requests
   requiredQty: number;
   currentStock: number;
   shortageQty: number;
@@ -119,6 +122,7 @@ export interface PendingProcurement {
 
 export interface VendorPricePoint {
   itemName: string;
+  brand?: string; // Price points tied to specific brands
   price: number;
   unit: string;
 }
@@ -143,15 +147,16 @@ export interface Vendor {
 
 export interface POItem {
   ingredientName: string;
+  brand?: string;
   quantity: number;
   unit: string;
   priceAtOrder?: number;
-  receivedQuantity?: number; // Tracks physical receipt
+  receivedQuantity?: number;
 }
 
 export interface PurchaseOrder {
   id: string;
-  orderNumber: string; // Unique human-readable ID
+  orderNumber: string;
   vendorId: string;
   vendorName: string;
   items: POItem[];

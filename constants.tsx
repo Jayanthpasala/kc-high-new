@@ -32,21 +32,27 @@ export const NAV_ITEMS: NavItem[] = [
 
 export const DASHBOARD_CARDS = [
   {
+    id: 'production',
     title: "Today's Production Plan",
     description: "Plan and track daily meal prep sessions.",
     icon: <ChefHat className="text-emerald-500" size={24} />,
-    emptyMessage: "No production sessions scheduled for today."
+    emptyMessage: "No production sessions scheduled for today.",
+    targetPage: PageId.PRODUCTION
   },
   {
+    id: 'inventory',
     title: "Low Stock Alerts",
     description: "Items requiring immediate reordering.",
     icon: <AlertTriangle className="text-amber-500" size={24} />,
-    emptyMessage: "All inventory levels are currently healthy."
+    emptyMessage: "All inventory levels are currently healthy.",
+    targetPage: PageId.INVENTORY
   },
   {
+    id: 'activity',
     title: "Recent Activity",
     description: "Latest logs from kitchen staff operations.",
     icon: <History className="text-blue-500" size={24} />,
-    emptyMessage: "No recent system activities to display."
+    emptyMessage: "No recent system activities to display.",
+    targetPage: PageId.REPORTS
   }
 ];

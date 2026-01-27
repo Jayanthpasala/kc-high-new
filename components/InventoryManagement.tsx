@@ -25,7 +25,8 @@ import {
   Loader2,
   TrendingUp,
   Banknote,
-  Database
+  Database,
+  Tag
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { InventoryItem } from '../types';
@@ -55,6 +56,7 @@ export const InventoryManagement: React.FC = () => {
   
   const INITIAL_FORM_STATE: Partial<InventoryItem> = {
     name: '', 
+    brand: '',
     category: 'Produce', 
     quantity: 0, 
     unit: 'kg', 
@@ -97,7 +99,8 @@ export const InventoryManagement: React.FC = () => {
   const categories = ['All', 'Produce', 'Dry Goods', 'Proteins', 'Dairy', 'Spices'];
 
   const filteredItems = items.filter(item => {
-    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         (item.brand || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
     const matchesStatus = statusFilter === 'all' || getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === statusFilter;
     return matchesSearch && matchesCategory && matchesStatus;
@@ -173,7 +176,7 @@ export const InventoryManagement: React.FC = () => {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { text: `Analyze this inventory document/PDF/Invoice. Extract raw material data. 
-              Output JSON array: [{name: string, category: string, quantity: number, unit: string, lastPrice: number, supplier: string}].
+              Output JSON array: [{name: string, brand: string, category: string, quantity: number, unit: string, lastPrice: number, supplier: string}].
               Infer category from item names (Produce, Dry Goods, Proteins, Dairy, Spices).` }
           ]
         },
@@ -185,6 +188,7 @@ export const InventoryManagement: React.FC = () => {
               type: Type.OBJECT,
               properties: {
                 name: { type: Type.STRING },
+                brand: { type: Type.STRING },
                 category: { type: Type.STRING },
                 quantity: { type: Type.NUMBER },
                 unit: { type: Type.STRING },
@@ -204,12 +208,14 @@ export const InventoryManagement: React.FC = () => {
         if (existing) {
           await updateDoc(doc(db, "inventory", existing.id), {
             quantity: existing.quantity + newItem.quantity,
+            brand: newItem.brand || existing.brand || '',
             lastPrice: newItem.lastPrice || existing.lastPrice || 0,
             lastRestocked: new Date().toISOString().split('T')[0]
           });
         } else {
           await addDoc(collection(db, "inventory"), {
             name: newItem.name,
+            brand: newItem.brand || '',
             category: newItem.category || 'Produce',
             quantity: newItem.quantity,
             unit: newItem.unit,
@@ -269,7 +275,7 @@ export const InventoryManagement: React.FC = () => {
           <Database size={64} className="text-amber-300 mb-6" />
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">Cloud Database Restricted</h3>
           <p className="text-slate-500 max-w-sm mx-auto mt-2 font-bold uppercase text-[10px] tracking-widest">
-            Firestore permissions are missing. Please update your Firebase Security Rules to 'allow read, write: if request.auth != null;'.
+            Firestore permissions are missing. Please update your Firebase Security Rules to 'allow read, write: if request.auth != null;'. Using local fallback profile.
           </p>
         </div>
       ) : (
@@ -306,7 +312,7 @@ export const InventoryManagement: React.FC = () => {
               <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={22} />
               <input 
                 type="text" 
-                placeholder="Quick search by material name or lead vendor..." 
+                placeholder="Search by material, brand, or vendor..." 
                 className="w-full pl-16 pr-12 py-5 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-slate-900 outline-none focus:bg-white focus:border-slate-900 transition-all placeholder:text-slate-300 placeholder:font-bold" 
                 value={searchTerm} 
                 onChange={(e) => setSearchTerm(e.target.value)} 
@@ -344,6 +350,7 @@ export const InventoryManagement: React.FC = () => {
                         <p className="font-black text-slate-900 text-xl tracking-tight mb-1">{item.name}</p>
                         <div className="flex items-center gap-2">
                           <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-md">{item.category}</span>
+                          {item.brand && <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1"><Tag size={10} /> {item.brand}</span>}
                           <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><Truck size={10} /> {item.supplier}</span>
                         </div>
                       </td>
@@ -389,9 +396,15 @@ export const InventoryManagement: React.FC = () => {
             </div>
             
             <div className="p-12 space-y-8 overflow-y-auto">
-               <div className="space-y-3">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Asset Identity</label>
-                  <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+               <div className="grid grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Asset Identity</label>
+                    <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Specification</label>
+                    <input type="text" value={formData.brand} onChange={e => setFormData({...formData, brand: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" placeholder="e.g. Amul, Everest" />
+                  </div>
                </div>
 
                <div className="grid grid-cols-2 gap-8">
@@ -408,7 +421,7 @@ export const InventoryManagement: React.FC = () => {
                <div className="grid grid-cols-2 gap-8">
                  <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Supplier</label>
-                    <input type="text" value={formData.supplier} onChange={e => setEditingItem ? setFormData({...formData, supplier: e.target.value}) : null} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                    <input type="text" value={formData.supplier} onChange={e => setFormData({...formData, supplier: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Alert Level</label>

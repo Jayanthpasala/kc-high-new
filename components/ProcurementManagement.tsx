@@ -27,7 +27,9 @@ import {
   PackageCheck,
   AlertCircle,
   ArrowDownToLine,
-  ScanLine
+  ScanLine,
+  Tag,
+  Scale
 } from 'lucide-react';
 import { PendingProcurement, PurchaseOrder, InventoryItem, Vendor, POTemplateConfig, POItem } from '../types';
 
@@ -62,13 +64,14 @@ export const ProcurementManagement: React.FC = () => {
   // Manual Request Form State
   const [manualReq, setManualReq] = useState({
     name: '',
+    brand: '',
     qty: 0,
     unit: 'kg',
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
   // Approval Form State
-  const [approvalData, setApprovalData] = useState<{vendorId: string, quantity: number, unitPrice: number}>({
+  const [approvalData, setApprovalData] = useState<{vendorId: string, quantity: number, unitPrice: number, brand?: string}>({
     vendorId: '',
     quantity: 0,
     unitPrice: 0
@@ -92,6 +95,7 @@ export const ProcurementManagement: React.FC = () => {
         .map((item: InventoryItem) => ({
           id: `SHORT-${item.id}`,
           ingredientName: item.name,
+          brand: item.brand,
           requiredQty: item.reorderLevel * 2, 
           currentStock: item.quantity - (item.reserved || 0),
           shortageQty: item.reorderLevel - (item.quantity - (item.reserved || 0)),
@@ -110,10 +114,14 @@ export const ProcurementManagement: React.FC = () => {
   }, []);
 
   const handleManualRequest = () => {
-    if (!manualReq.name || manualReq.qty <= 0) return;
+    if (!manualReq.name || manualReq.qty <= 0) {
+      alert("Validation Error: Name and quantity are required.");
+      return;
+    }
     const newReq: PendingProcurement = {
       id: `REQ-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
       ingredientName: manualReq.name,
+      brand: manualReq.brand,
       requiredQty: manualReq.qty,
       currentStock: 0,
       shortageQty: manualReq.qty,
@@ -127,6 +135,13 @@ export const ProcurementManagement: React.FC = () => {
     localStorage.setItem('manualProcurements', JSON.stringify([newReq, ...existingManual]));
     setProcurements(prev => [newReq, ...prev]);
     setIsRequestModalOpen(false);
+    setManualReq({
+      name: '',
+      brand: '',
+      qty: 0,
+      unit: 'kg',
+      date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    });
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -143,6 +158,7 @@ export const ProcurementManagement: React.FC = () => {
       vendorName: selectedVendor?.name || 'Manual Partner',
       items: [{ 
         ingredientName: approvingProcurement.ingredientName, 
+        brand: approvalData.brand || approvingProcurement.brand,
         quantity: approvalData.quantity, 
         unit: approvingProcurement.unit,
         priceAtOrder: approvalData.unitPrice
@@ -192,11 +208,28 @@ export const ProcurementManagement: React.FC = () => {
       const invIdx = updatedInventory.findIndex(i => i.name.toLowerCase() === item.ingredientName.toLowerCase());
       if (invIdx > -1) {
         updatedInventory[invIdx].quantity += received;
+        if (item.brand) updatedInventory[invIdx].brand = item.brand;
         if (item.priceAtOrder) updatedInventory[invIdx].lastPrice = item.priceAtOrder;
         updatedInventory[invIdx].lastRestocked = new Date().toISOString().split('T')[0];
         
         const it = updatedInventory[invIdx];
         it.status = (it.quantity - (it.reserved || 0)) <= it.reorderLevel ? 'low' : 'healthy';
+      } else {
+        // Handle new item ingestion
+        updatedInventory.push({
+          id: Math.random().toString(36).substr(2, 9),
+          name: item.ingredientName,
+          brand: item.brand || '',
+          category: 'Dry Goods',
+          quantity: received,
+          unit: item.unit,
+          reorderLevel: 10,
+          status: 'healthy',
+          supplier: verifyingPO.vendorName,
+          lastRestocked: new Date().toISOString().split('T')[0],
+          lastPrice: item.priceAtOrder || 0,
+          reserved: 0
+        });
       }
 
       return { ...item, receivedQuantity: received };
@@ -256,7 +289,6 @@ export const ProcurementManagement: React.FC = () => {
       {activeTab === 'SHORTAGES' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 no-print">
           {procurements.map(p => {
-             const cheapest = vendors.find(v => (v.priceLedger || []).some(pl => pl.itemName === p.ingredientName));
              return (
               <div key={p.id} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 shadow-sm hover:shadow-2xl transition-all flex flex-col group animate-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-start mb-6">
@@ -268,13 +300,61 @@ export const ProcurementManagement: React.FC = () => {
                 </div>
                 
                 <h3 className="text-2xl font-black text-slate-900 mb-2">{p.ingredientName}</h3>
+                {p.brand && <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1 mb-4"><Tag size={12} /> Brand Preference: {p.brand}</p>}
                 
-                <button onClick={() => setApprovingProcurement(p)} className="mt-8 w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95">
+                <button 
+                  onClick={() => {
+                    setApprovingProcurement(p);
+                    setApprovalData({ vendorId: '', quantity: p.requiredQty, unitPrice: 0, brand: p.brand });
+                  }} 
+                  className="mt-8 w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95"
+                >
                   <CheckCircle size={18} /> Initiate Purchase
                 </button>
               </div>
              );
           })}
+        </div>
+      )}
+
+      {/* Manual Request Modal */}
+      {isRequestModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+           <div className="bg-white rounded-[3.5rem] w-full max-w-xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500">
+              <div className="bg-slate-900 p-10 text-white flex justify-between items-center">
+                 <div>
+                    <h3 className="text-3xl font-black tracking-tight uppercase">Request Material</h3>
+                    <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Manual Stock Replenishment</p>
+                 </div>
+                 <button onClick={() => setIsRequestModalOpen(false)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
+              </div>
+              <div className="p-10 space-y-6">
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Material Name</label>
+                       <input type="text" value={manualReq.name} onChange={e => setManualReq({...manualReq, name: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" placeholder="e.g. Tomato, Rice" />
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Preference</label>
+                       <input type="text" value={manualReq.brand} onChange={e => setManualReq({...manualReq, brand: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" placeholder="e.g. Everest, Amul" />
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Required Volume</label>
+                       <div className="flex gap-2">
+                          <input type="number" value={manualReq.qty} onChange={e => setManualReq({...manualReq, qty: parseFloat(e.target.value) || 0})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-black text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                          <input type="text" value={manualReq.unit} onChange={e => setManualReq({...manualReq, unit: e.target.value})} className="w-24 px-4 py-4 rounded-xl bg-slate-100 border-none font-black text-center text-xs uppercase" />
+                       </div>
+                    </div>
+                    <div className="space-y-1.5">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Needed By</label>
+                       <input type="date" value={manualReq.date} onChange={e => setManualReq({...manualReq, date: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                    </div>
+                 </div>
+                 <button onClick={handleManualRequest} className="w-full mt-4 bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl">Commit Request</button>
+              </div>
+           </div>
         </div>
       )}
 
@@ -289,6 +369,11 @@ export const ProcurementManagement: React.FC = () => {
                   <div>
                     <h4 className="font-black text-2xl text-slate-900 tracking-tight">{po.orderNumber}</h4>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">{po.vendorName} • Total ₹{po.totalCost?.toLocaleString()}</p>
+                    <div className="flex gap-2 mt-2">
+                      {po.items.map((it, idx) => (
+                        <span key={idx} className="text-[9px] font-black bg-slate-100 px-2 py-0.5 rounded text-slate-500 uppercase">{it.ingredientName} {it.brand ? `(${it.brand})` : ''}</span>
+                      ))}
+                    </div>
                   </div>
                </div>
                <div className="flex gap-4">
@@ -331,7 +416,7 @@ export const ProcurementManagement: React.FC = () => {
                  <div className="bg-amber-50 p-6 rounded-[2rem] border border-amber-100 flex items-start gap-4">
                     <AlertCircle className="text-amber-500 shrink-0 mt-0.5" size={20} />
                     <p className="text-[11px] font-bold text-amber-700 leading-relaxed uppercase tracking-tight">
-                       Security Protocol: Verify physical weight/count before commitment. Any missing quantity will be logged as a discrepancy. Inventory levels update only on "Finalize GRN".
+                       Security Protocol: Verify physical weight/count before commitment. Any missing quantity will be logged as a discrepancy.
                     </p>
                  </div>
 
@@ -345,6 +430,7 @@ export const ProcurementManagement: React.FC = () => {
                               <p className="text-2xl font-black text-slate-900 tracking-tight">{item.ingredientName}</p>
                               <div className="flex items-center gap-4 mt-1">
                                  <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Ordered: {item.quantity} {item.unit}</span>
+                                 {item.brand && <span className="text-[10px] font-black uppercase text-blue-500 tracking-widest flex items-center gap-1"><Tag size={10} /> Brand: {item.brand}</span>}
                                  {shortage > 0 && (
                                    <span className="text-[10px] font-black uppercase text-rose-500 tracking-widest flex items-center gap-1"><AlertCircle size={10} /> Shortage: {shortage.toFixed(2)}</span>
                                  )}
@@ -417,7 +503,7 @@ export const ProcurementManagement: React.FC = () => {
                       <div className="space-y-1">
                         {po.items.map((item, i) => (
                           <p key={i} className="text-xs font-bold text-slate-700">
-                            + {item.receivedQuantity} {item.unit} {item.ingredientName} 
+                            + {item.receivedQuantity} {item.unit} {item.ingredientName} {item.brand ? `(${item.brand})` : ''}
                             {item.receivedQuantity! < item.quantity && <span className="text-rose-500 ml-2">({item.quantity - item.receivedQuantity!} Short)</span>}
                           </p>
                         ))}
@@ -434,7 +520,7 @@ export const ProcurementManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Existing Approving Modal with modifications for unique ID */}
+      {/* Approving Modal with Brand Selection */}
       {approvingProcurement && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300 no-print">
           <div className="bg-white rounded-[3.5rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900">
@@ -446,24 +532,35 @@ export const ProcurementManagement: React.FC = () => {
               <TrendingUp className="text-emerald-500" />
             </div>
             
-            <div className="p-10 space-y-8">
+            <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto">
                <div className="space-y-4">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Building size={14} /> Suppliers for {approvingProcurement.ingredientName}</label>
+                  <div className="flex items-center justify-between border-b pb-4">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2"><Building size={14} /> Suppliers for {approvingProcurement.ingredientName}</label>
+                    {approvingProcurement.brand && <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">Target: {approvingProcurement.brand}</span>}
+                  </div>
                   <div className="space-y-3">
-                    {vendors.filter(v => (v.priceLedger || []).some(pl => pl.itemName === approvingProcurement.ingredientName)).map(vendor => {
-                       const price = vendor.priceLedger?.find(pl => pl.itemName === approvingProcurement.ingredientName)?.price || 0;
-                       return (
+                    {vendors.filter(v => (v.priceLedger || []).some(pl => pl.itemName.toLowerCase() === approvingProcurement.ingredientName.toLowerCase())).map(vendor => {
+                       const pricePoints = vendor.priceLedger?.filter(pl => pl.itemName.toLowerCase() === approvingProcurement.ingredientName.toLowerCase()) || [];
+                       return pricePoints.map((pp, pi) => (
                         <button 
-                          key={vendor.id} 
+                          key={`${vendor.id}-${pi}`}
                           onClick={() => {
-                            setApprovalData({...approvalData, vendorId: vendor.id, unitPrice: price});
+                            setApprovalData({
+                              ...approvalData, 
+                              vendorId: vendor.id, 
+                              unitPrice: pp.price, 
+                              brand: pp.brand || approvingProcurement.brand
+                            });
                           }}
-                          className={`w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all ${approvalData.vendorId === vendor.id ? 'border-emerald-500 bg-emerald-50 shadow-lg' : 'border-slate-100 hover:border-slate-300'}`}
+                          className={`w-full p-6 rounded-2xl border-2 flex items-center justify-between transition-all ${approvalData.vendorId === vendor.id && approvalData.brand === (pp.brand || approvingProcurement.brand) ? 'border-emerald-500 bg-emerald-50 shadow-lg' : 'border-slate-100 hover:border-slate-300'}`}
                         >
-                           <p className="font-black text-slate-900">{vendor.name}</p>
-                           <p className="text-xl font-black text-slate-900">₹{price} <span className="text-[10px] text-slate-300">/ {approvingProcurement.unit}</span></p>
+                           <div>
+                              <p className="font-black text-slate-900">{vendor.name}</p>
+                              {pp.brand && <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter mt-1">Brand: {pp.brand}</p>}
+                           </div>
+                           <p className="text-xl font-black text-slate-900">₹{pp.price} <span className="text-[10px] text-slate-300">/ {pp.unit}</span></p>
                         </button>
-                       );
+                       ));
                     })}
                   </div>
                </div>
@@ -477,7 +574,7 @@ export const ProcurementManagement: React.FC = () => {
         </div>
       )}
 
-      {/* Existing PDF template updated to show OrderNumber */}
+      {/* Existing PDF template */}
       <div className="hidden print:block fixed inset-0 bg-white z-[9999] p-12 overflow-auto font-sans">
         {viewingPO && (
           <div className="max-w-4xl mx-auto">
@@ -531,7 +628,10 @@ export const ProcurementManagement: React.FC = () => {
                    <tbody className="divide-y divide-slate-200">
                       {viewingPO.items.map((item, idx) => (
                         <tr key={idx} className="hover:bg-slate-50">
-                           <td className="px-6 py-6 font-black text-xl text-slate-900">{item.ingredientName}</td>
+                           <td className="px-6 py-6">
+                              <p className="font-black text-xl text-slate-900">{item.ingredientName}</p>
+                              {item.brand && <p className="text-[10px] font-black uppercase text-slate-400">Brand: {item.brand}</p>}
+                           </td>
                            <td className="px-6 py-6 text-right font-black text-slate-900 text-lg">{item.quantity} <span className="text-[10px] uppercase text-slate-400">{item.unit}</span></td>
                            <td className="px-6 py-6 text-right font-bold text-slate-700">₹{item.priceAtOrder?.toLocaleString()}</td>
                            <td className="px-6 py-6 text-right font-black text-slate-900 text-lg">₹{(item.quantity * (item.priceAtOrder || 0)).toLocaleString()}</td>

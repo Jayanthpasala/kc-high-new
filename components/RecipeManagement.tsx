@@ -20,7 +20,8 @@ import {
   Beaker,
   ChevronRight,
   Info,
-  Calculator
+  Calculator,
+  Tag
 } from 'lucide-react';
 import { Recipe, Ingredient, InventoryItem } from '../types';
 
@@ -29,7 +30,7 @@ const INITIAL_FORM_STATE: Partial<Recipe> = {
   category: 'Main Course',
   outputUnit: 'kg',
   difficulty: 'Medium',
-  ingredients: [{ name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }],
+  ingredients: [{ name: '', brand: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }],
   instructions: ['']
 };
 
@@ -75,12 +76,13 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
       const defaultIngredients = matchingInvItem ? [
         { 
           name: matchingInvItem.name, 
+          brand: matchingInvItem.brand || '',
           amount: 1, 
           unit: matchingInvItem.unit, 
           inventoryItemId: matchingInvItem.id,
           conversionFactor: 1.0
         } as Ingredient
-      ] : [{ name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 } as Ingredient];
+      ] : [{ name: '', brand: '', amount: 0, unit: 'kg', conversionFactor: 1.0 } as Ingredient];
 
       setFormData({ 
         ...INITIAL_FORM_STATE, 
@@ -160,7 +162,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
   const addIngredient = () => {
     setFormData(prev => ({
       ...prev,
-      ingredients: [...(prev.ingredients || []), { name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }]
+      ingredients: [...(prev.ingredients || []), { name: '', brand: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }]
     }));
   };
 
@@ -203,6 +205,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
 
   const linkInventoryItem = (idx: number, item: InventoryItem) => {
     updateIngredient(idx, 'name', item.name);
+    updateIngredient(idx, 'brand', item.brand || '');
     updateIngredient(idx, 'unit', item.unit);
     updateIngredient(idx, 'inventoryItemId', item.id);
     setLinkingIdx(null);
@@ -214,7 +217,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
   };
 
   const filteredInventory = inventory.filter(i => 
-    i.name.toLowerCase().includes(invSearch.toLowerCase())
+    i.name.toLowerCase().includes(invSearch.toLowerCase()) || (i.brand || '').toLowerCase().includes(invSearch.toLowerCase())
   );
 
   return (
@@ -358,8 +361,12 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                             <div className="shrink-0">
                               {ing.inventoryItemId ? <CheckCircle2 size={18} className="text-emerald-500" /> : <AlertCircle size={18} className="text-amber-400" />}
                             </div>
-                            <div className="flex-1">
+                            <div className="flex-1 grid grid-cols-2 gap-4">
                               <input type="text" placeholder="Ingredient Name" value={ing.name} onChange={(e) => updateIngredient(idx, 'name', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-900 placeholder:text-slate-300 focus:ring-0 p-0 text-sm" readOnly={!!ing.inventoryItemId} />
+                              <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs">
+                                <Tag size={12} />
+                                <input type="text" placeholder="Brand Preference" value={ing.brand} onChange={(e) => updateIngredient(idx, 'brand', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-700 placeholder:text-slate-200 focus:ring-0 p-0 text-xs" readOnly={!!ing.inventoryItemId} />
+                              </div>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover/ing:opacity-100 transition-all">
                                {ing.inventoryItemId ? (
@@ -407,7 +414,10 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                             <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
                                {filteredInventory.map(item => (
                                  <button key={item.id} onClick={() => linkInventoryItem(idx, item)} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-emerald-500 hover:text-white transition-all flex items-center justify-between group/invitem">
-                                   <span className="font-bold text-xs">{item.name}</span>
+                                   <div className="flex flex-col">
+                                      <span className="font-bold text-xs">{item.name}</span>
+                                      {item.brand && <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">{item.brand}</span>}
+                                   </div>
                                    <ChevronRight size={12} className="opacity-0 group-hover/invitem:opacity-100" />
                                  </button>
                                ))}

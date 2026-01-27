@@ -121,7 +121,7 @@ const App: React.FC = () => {
     }
 
     switch (activePage) {
-      case PageId.DASHBOARD: return <Dashboard />;
+      case PageId.DASHBOARD: return <Dashboard onNavigate={setActivePage} />;
       case PageId.PRODUCTION: return <ProductionPlanning />;
       case PageId.RECIPES: return <RecipeManagement />;
       case PageId.PENDING_RECIPES: return <PendingRecipes />;
@@ -131,7 +131,7 @@ const App: React.FC = () => {
       case PageId.REPORTS: return <Forecasting />;
       case PageId.PO_SETTINGS: return <POTemplateSettings />;
       case PageId.USERS: return <UserManagement />;
-      default: return <Dashboard />;
+      default: return <Dashboard onNavigate={setActivePage} />;
     }
   };
 
