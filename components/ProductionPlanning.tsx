@@ -11,7 +11,7 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
-  AlertCircle,
+  AlertCircle, 
   Clock,
   History,
   ChefHat,
@@ -27,7 +27,8 @@ import {
   LayoutGrid,
   CalendarCheck,
   ClipboardList,
-  PlusCircle
+  PlusCircle,
+  Calendar
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { PageId, ProductionPlan, Meal, PlanType, Recipe, InventoryItem, InventoryReservation, PendingProcurement } from '../types';
@@ -210,7 +211,11 @@ export const ProductionPlanning: React.FC = () => {
       const extractedData = await extractMenuWithAI(base64, file.type);
       const safeData = Array.isArray(extractedData) ? extractedData : [];
       const newPlans: ProductionPlan[] = safeData.map((item: any) => {
-        let finalDate = item.date || 'INVALID_DATE';
+        let finalDate = item.date;
+        // Basic validation for YYYY-MM-DD
+        if (!finalDate || !/^\d{4}-\d{2}-\d{2}$/.test(finalDate)) {
+             finalDate = new Date().toISOString().split('T')[0];
+        }
         return {
           id: generateId(), date: finalDate, type: 'production', meals: (item.meals || []).map((m: any) => ({
             mealType: m.mealType || 'Meal', dishes: Array.isArray(m.dishes) ? m.dishes : []
@@ -227,6 +232,30 @@ export const ProductionPlanning: React.FC = () => {
     }
   };
 
+  const updateDish = (planIdx: number, mealIdx: number, dishIdx: number, val: string) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes[dishIdx] = val;
+    setPendingPlans(updated);
+  };
+
+  const removeDish = (planIdx: number, mealIdx: number, dishIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes = updated[planIdx].meals[mealIdx].dishes.filter((_, i) => i !== dishIdx);
+    setPendingPlans(updated);
+  };
+
+  const addDish = (planIdx: number, mealIdx: number) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].dishes.push("New Item");
+    setPendingPlans(updated);
+  };
+
+  const updateMealType = (planIdx: number, mealIdx: number, val: string) => {
+    const updated = [...pendingPlans];
+    updated[planIdx].meals[mealIdx].mealType = val;
+    setPendingPlans(updated);
+  };
+
   const extractMenuWithAI = async (base64: string, mimeType: string) => {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await ai.models.generateContent({
@@ -234,7 +263,7 @@ export const ProductionPlanning: React.FC = () => {
       contents: {
         parts: [
           { inlineData: { data: base64, mimeType } },
-          { text: `Extract kitchen menu. Output JSON array: [{date: "YYYY-MM-DD", meals: [{mealType: string, dishes: string[]}]}]` }
+          { text: `Extract kitchen menu. The current year is ${currentYear}. If the document does not explicitly state the year, assume it is ${currentYear}. Return dates strictly in YYYY-MM-DD format. Output JSON array: [{date: "YYYY-MM-DD", meals: [{mealType: string, dishes: string[]}]}]` }
         ]
       },
       config: {
@@ -383,20 +412,49 @@ export const ProductionPlanning: React.FC = () => {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pendingPlans.map((plan, planIdx) => (
-              <div key={planIdx} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col h-full">
-                 <input type="date" value={plan.date} onChange={(e) => {
-                   const updated = [...pendingPlans];
-                   updated[planIdx].date = e.target.value;
-                   setPendingPlans(updated);
-                 }} className="font-bold text-lg p-2 bg-slate-50 rounded-lg border-none mb-6 outline-none text-slate-900" />
+              <div key={planIdx} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col h-full group hover:border-emerald-500 transition-colors">
+                 <div className="mb-6 relative">
+                   <div className="absolute top-1/2 right-4 -translate-y-1/2 pointer-events-none text-slate-400">
+                      <Calendar size={18} />
+                   </div>
+                   <input 
+                    type="date" 
+                    value={plan.date} 
+                    onChange={(e) => {
+                     const updated = [...pendingPlans];
+                     updated[planIdx].date = e.target.value;
+                     setPendingPlans(updated);
+                   }} 
+                   className="w-full font-bold text-lg p-4 bg-slate-50 hover:bg-white focus:bg-white rounded-xl border-2 border-transparent hover:border-emerald-500 focus:border-emerald-500 outline-none text-slate-900 transition-all shadow-sm cursor-pointer" 
+                  />
+                 </div>
                  <div className="flex-1 space-y-5">
                    {plan.meals.map((m, mealIdx) => (
-                     <div key={mealIdx} className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100">
-                       <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-4">{m.mealType}</p>
+                     <div key={mealIdx} className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100 group/meal">
+                       <div className="flex justify-between items-center mb-4">
+                           <input 
+                               value={m.mealType} 
+                               onChange={(e) => updateMealType(planIdx, mealIdx, e.target.value)}
+                               className="text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-transparent border-b border-transparent focus:border-emerald-500 outline-none w-full"
+                           />
+                       </div>
                        <div className="space-y-3">
                          {m.dishes.map((d, dishIdx) => (
-                           <p key={dishIdx} className="text-sm font-semibold text-slate-700 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-slate-300 rounded-full"></div>{d}</p>
+                           <div key={dishIdx} className="flex items-center gap-2 group/dish">
+                              <div className="w-1.5 h-1.5 bg-slate-300 rounded-full shrink-0"></div>
+                              <input 
+                                  value={d}
+                                  onChange={(e) => updateDish(planIdx, mealIdx, dishIdx, e.target.value)}
+                                  className="flex-1 text-sm font-semibold text-slate-700 bg-transparent border-b border-transparent focus:border-slate-300 outline-none transition-colors"
+                              />
+                              <button onClick={() => removeDish(planIdx, mealIdx, dishIdx)} className="text-slate-300 hover:text-rose-500 opacity-0 group-hover/dish:opacity-100 transition-opacity">
+                                  <X size={14} />
+                              </button>
+                           </div>
                          ))}
+                         <button onClick={() => addDish(planIdx, mealIdx)} className="text-[10px] font-bold text-slate-400 hover:text-emerald-600 flex items-center gap-1 mt-2">
+                            <Plus size={12} /> Add Item
+                         </button>
                        </div>
                      </div>
                    ))}

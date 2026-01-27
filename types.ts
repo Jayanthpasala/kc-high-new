@@ -35,8 +35,6 @@ export interface NavItem {
 export interface Brand {
   id: string;
   name: string;
-  itemId: string; // Compulsory link to an item
-  itemName: string; // Denormalized name for display
   description?: string;
   category?: string;
 }
@@ -75,7 +73,7 @@ export interface ProductionPlan {
 export interface InventoryItem {
   id: string;
   name: string;
-  brand?: string; // Brand tracking
+  brand?: string; // New field for brand tracking
   category: string;
   quantity: number;
   unit: string;
@@ -90,7 +88,7 @@ export interface InventoryItem {
 
 export interface Ingredient {
   name: string;
-  brand?: string;
+  brand?: string; // New field for recipe-specific brand requirements
   amount: number;
   unit: string;
   inventoryItemId?: string;
@@ -119,7 +117,7 @@ export interface InventoryReservation {
 export interface PendingProcurement {
   id: string;
   ingredientName: string;
-  brand?: string; 
+  brand?: string; // Brand tracking for requests
   requiredQty: number;
   currentStock: number;
   shortageQty: number;
@@ -132,7 +130,7 @@ export interface PendingProcurement {
 
 export interface VendorPricePoint {
   itemName: string;
-  brand?: string; 
+  brand?: string; // Price points tied to specific brands
   price: number;
   unit: string;
 }
@@ -167,6 +165,7 @@ export interface POItem {
 export interface PurchaseOrder {
   id: string;
   orderNumber: string;
+  grnNumber?: string; // Unique Goods Receipt Note number
   vendorId: string;
   vendorName: string;
   items: POItem[];
