@@ -28,7 +28,7 @@ export interface NavItem {
   id: PageId;
   label: string;
   icon: React.ReactNode;
-  ownerOnly?: boolean; // New field for role-based navigation
+  ownerOnly?: boolean; 
 }
 
 export interface POTemplateConfig {
@@ -82,6 +82,7 @@ export interface Ingredient {
   amount: number;
   unit: string;
   inventoryItemId?: string;
+  conversionFactor?: number; 
 }
 
 export interface Recipe {
@@ -140,13 +141,24 @@ export interface Vendor {
   priceLedger?: VendorPricePoint[];
 }
 
+export interface POItem {
+  ingredientName: string;
+  quantity: number;
+  unit: string;
+  priceAtOrder?: number;
+  receivedQuantity?: number; // Tracks physical receipt
+}
+
 export interface PurchaseOrder {
   id: string;
+  orderNumber: string; // Unique human-readable ID
   vendorId: string;
   vendorName: string;
-  items: { ingredientName: string; quantity: number; unit: string; priceAtOrder?: number }[];
+  items: POItem[];
   expectedDeliveryDate: string;
-  status: 'draft' | 'pending' | 'received'; 
+  status: 'draft' | 'pending' | 'received' | 'partially_received'; 
   createdAt: number;
   totalCost?: number;
+  receivedAt?: number;
+  remarks?: string;
 }

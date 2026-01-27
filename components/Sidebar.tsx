@@ -39,7 +39,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ChefHat className="text-emerald-400 shrink-0" size={24} />
           </div>
           {(!isCollapsed || isMobileOpen) && (
-            <span className="ml-3 font-bold text-lg text-white tracking-tight">Culina<span className="text-emerald-400">Ops</span></span>
+            <span className="ml-3 font-bold text-lg text-white tracking-tight">KMS <span className="text-emerald-400">Systems</span></span>
           )}
         </div>
         {isMobileOpen && (

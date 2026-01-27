@@ -38,8 +38,8 @@ export const Login: React.FC = () => {
           <div className="bg-emerald-500 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-emerald-500/20">
             <ChefHat size={32} className="text-slate-950" />
           </div>
-          <h2 className="text-3xl font-black tracking-tight">Culina<span className="text-emerald-400">Ops</span></h2>
-          <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.3em]">Kitchen Command Center v4.2</p>
+          <h2 className="text-3xl font-black tracking-tight">KMS <span className="text-emerald-400">Kitchen</span></h2>
+          <p className="text-slate-400 font-bold mt-2 uppercase text-[10px] tracking-[0.3em]">Management System v5.0</p>
         </div>
 
         <form onSubmit={handleAuth} className="p-10 space-y-6">
@@ -56,7 +56,7 @@ export const Login: React.FC = () => {
                 type="email" 
                 required
                 className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
-                placeholder="chef@culinaops.com"
+                placeholder="chef@kms-kitchen.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -96,7 +96,7 @@ export const Login: React.FC = () => {
 
         <div className="bg-slate-50 px-10 py-6 border-t border-slate-100 flex items-center justify-center gap-2">
            <ShieldCheck size={14} className="text-emerald-500" />
-           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Secure Cloud ERP Gatekeeper</p>
+           <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Secure Cloud KMS Gatekeeper</p>
         </div>
       </div>
     </div>

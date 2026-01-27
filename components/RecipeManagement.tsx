@@ -16,66 +16,20 @@ import {
   Search as SearchIcon,
   CheckCircle2,
   AlertCircle,
-  Layout,
-  Filter,
   Scale,
   Beaker,
   ChevronRight,
-  Info
+  Info,
+  Calculator
 } from 'lucide-react';
 import { Recipe, Ingredient, InventoryItem } from '../types';
-
-const SAMPLE_RECIPES: Recipe[] = [
-  {
-    id: '1',
-    name: 'Home-style Makhani Gravy Base',
-    category: 'Main Course',
-    outputUnit: 'kg',
-    difficulty: 'Medium',
-    ingredients: [
-      { name: 'Red Tomatoes (Hybrid)', amount: 1.2, unit: 'kg' },
-      { name: 'Amul Butter', amount: 0.15, unit: 'kg' },
-      { name: 'Ginger-Garlic Paste', amount: 0.05, unit: 'kg' },
-      { name: 'Kashmiri Red Chilli Powder', amount: 20, unit: 'g' },
-      { name: 'Kasuri Methi', amount: 5, unit: 'g' },
-      { name: 'Fresh Cream', amount: 100, unit: 'ml' }
-    ],
-    instructions: [
-      'Roughly chop tomatoes and cook with ginger-garlic paste until soft.',
-      'Blend into a fine puree and strain through a sieve.',
-      'Heat butter in a heavy-bottomed handi and add chilli powder.',
-      'Pour in the tomato puree and simmer until the fat separates.',
-      'Finish with cream and crushed kasuri methi.'
-    ]
-  },
-  {
-    id: '2',
-    name: 'Hyderabadi Dum Biryani Spice Blend',
-    category: 'Side Dish',
-    outputUnit: 'kg',
-    difficulty: 'Hard',
-    ingredients: [
-      { name: 'Shahi Jeera', amount: 100, unit: 'g' },
-      { name: 'Green Cardamom', amount: 50, unit: 'g' },
-      { name: 'Cloves', amount: 30, unit: 'g' },
-      { name: 'Cinnamon Bark', amount: 40, unit: 'g' },
-      { name: 'Star Anise', amount: 20, unit: 'g' }
-    ],
-    instructions: [
-      'Slowly dry roast all whole spices on a tawa over low heat.',
-      'Ensure spices are aromatic but not burnt.',
-      'Cool completely before grinding into a coarse powder.',
-      'Store in an airtight container for up to 15 days.'
-    ]
-  }
-];
 
 const INITIAL_FORM_STATE: Partial<Recipe> = {
   name: '',
   category: 'Main Course',
   outputUnit: 'kg',
   difficulty: 'Medium',
-  ingredients: [{ name: '', amount: 0, unit: 'kg' }],
+  ingredients: [{ name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }],
   instructions: ['']
 };
 
@@ -103,9 +57,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
     const recipeData = localStorage.getItem('recipes');
     if (recipeData) {
       setRecipes(JSON.parse(recipeData));
-    } else {
-      setRecipes(SAMPLE_RECIPES);
-      localStorage.setItem('recipes', JSON.stringify(SAMPLE_RECIPES));
     }
 
     const invData = localStorage.getItem('inventory');
@@ -117,7 +68,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
     
     if (initialDishName) {
       setEditingRecipe(null);
-      
       const invData = localStorage.getItem('inventory');
       const currentInventory: InventoryItem[] = invData ? JSON.parse(invData) : [];
       const matchingInvItem = currentInventory.find(i => i.name.toLowerCase() === initialDishName.toLowerCase());
@@ -127,9 +77,10 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
           name: matchingInvItem.name, 
           amount: 1, 
           unit: matchingInvItem.unit, 
-          inventoryItemId: matchingInvItem.id 
+          inventoryItemId: matchingInvItem.id,
+          conversionFactor: 1.0
         } as Ingredient
-      ] : [{ name: '', amount: 0, unit: 'kg' } as Ingredient];
+      ] : [{ name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 } as Ingredient];
 
       setFormData({ 
         ...INITIAL_FORM_STATE, 
@@ -165,7 +116,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
   const handleDelete = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    
     if (window.confirm('Are you sure you want to delete this recipe specification?')) {
       setRecipes(prev => {
         const updated = prev.filter(r => r.id !== id);
@@ -204,16 +154,13 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
 
     setTimeout(() => window.dispatchEvent(new Event('storage')), 0);
     setIsModalOpen(false);
-    
-    if (onComplete && formData.name) {
-      onComplete(formData.name);
-    }
+    if (onComplete && formData.name) onComplete(formData.name);
   };
 
   const addIngredient = () => {
     setFormData(prev => ({
       ...prev,
-      ingredients: [...(prev.ingredients || []), { name: '', amount: 0, unit: 'kg' }]
+      ingredients: [...(prev.ingredients || []), { name: '', amount: 0, unit: 'kg', conversionFactor: 1.0 }]
     }));
   };
 
@@ -272,7 +219,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
 
   return (
     <div className="space-y-8 pb-24 animate-in fade-in duration-500">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
@@ -290,7 +236,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
         </button>
       </div>
 
-      {/* Filter Bar */}
       <div className="bg-white p-3 rounded-[2rem] border border-slate-200 shadow-sm flex flex-col lg:flex-row gap-4 items-center">
         <div className="relative flex-1 w-full">
           <SearchIcon className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
@@ -302,9 +247,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        
         <div className="flex items-center gap-3 bg-slate-50 px-6 py-4 rounded-2xl w-full lg:w-auto">
-          <Filter size={16} className="text-slate-400" />
           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Cuisine Type:</label>
           <select 
             value={selectedCategory}
@@ -316,7 +259,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
         </div>
       </div>
 
-      {/* Main Grid Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredRecipes.map(recipe => (
           <div key={recipe.id} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col h-full relative">
@@ -328,9 +270,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                 {recipe.category}
               </span>
             </div>
-
             <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight flex-1">{recipe.name}</h3>
-            
             <div className="mb-8">
               <div className="bg-slate-50/50 p-6 rounded-2xl border border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -338,7 +278,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                     {recipe.outputUnit === 'kg' ? <Scale size={18} /> : <Beaker size={18} />}
                   </div>
                   <div className="flex flex-col">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Standard Batch</span>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-tight">Standard Unit</span>
                     <span className="text-sm font-bold text-slate-900">1.0 {recipe.outputUnit.toUpperCase()}</span>
                   </div>
                 </div>
@@ -348,28 +288,12 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                 </div>
               </div>
             </div>
-
             <div className="pt-6 border-t border-slate-100 flex items-center justify-between mt-auto">
               <div className="flex gap-2">
-                <button 
-                  onClick={(e) => { e.stopPropagation(); handleOpenEdit(recipe); }} 
-                  className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all active:scale-90"
-                  title="Modify Spec"
-                >
-                  <Edit3 size={18} />
-                </button>
-                <button 
-                  onClick={(e) => handleDelete(e, recipe.id)} 
-                  className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all active:scale-90"
-                  title="Archive Recipe"
-                >
-                  <Trash2 size={18} />
-                </button>
+                <button onClick={(e) => { e.stopPropagation(); handleOpenEdit(recipe); }} className="p-3 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all active:scale-90"><Edit3 size={18} /></button>
+                <button onClick={(e) => handleDelete(e, recipe.id)} className="p-3 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all active:scale-90"><Trash2 size={18} /></button>
               </div>
-              <button 
-                onClick={() => handleOpenEdit(recipe)}
-                className="text-[10px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2 hover:gap-4 transition-all group/btn"
-              >
+              <button onClick={() => handleOpenEdit(recipe)} className="text-[10px] font-black uppercase tracking-widest text-slate-900 flex items-center gap-2 hover:gap-4 transition-all group/btn">
                 Recipe Profile <ArrowRight size={14} className="text-emerald-500 group-hover/btn:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -377,11 +301,9 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
         ))}
       </div>
 
-      {/* High-Density Studio Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/70 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="bg-white rounded-[3rem] w-full max-w-[95vw] 2xl:max-w-[1600px] overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[95vh] flex flex-col">
-            {/* Modal Header */}
             <div className="bg-slate-900 p-8 md:px-12 md:py-8 text-white relative shrink-0 flex items-center justify-between border-b border-white/10">
               <div className="flex items-center gap-5">
                 <div className="bg-emerald-500 text-slate-950 p-3 rounded-2xl shadow-lg shadow-emerald-500/20">
@@ -389,32 +311,28 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-emerald-400 mb-0.5">
-                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">Kitchen OS Spec • v4.0</span>
+                    <span className="text-[10px] font-black uppercase tracking-[0.3em]">Kitchen OS BOM Studio</span>
                   </div>
-                  <h3 className="text-3xl font-black tracking-tight">{formData.name || (editingRecipe ? 'Edit Specification' : 'New Recipe Definition')}</h3>
+                  <h3 className="text-3xl font-black tracking-tight">{formData.name || 'Recipe Specification'}</h3>
                 </div>
               </div>
-              
-              <div className="flex items-center gap-4">
-                <button onClick={() => setIsModalOpen(false)} className="bg-white/5 hover:bg-rose-500 p-3 rounded-xl transition-all"><X size={24} /></button>
-              </div>
+              <button onClick={() => setIsModalOpen(false)} className="bg-white/5 hover:bg-rose-500 p-3 rounded-xl transition-all"><X size={24} /></button>
             </div>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 space-y-10">
-              {/* Metadata Top Bar */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
                 <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dish Name (Menu Standard)</label>
-                  <input type="text" value={formData.name || ''} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} className="w-full px-5 py-3 rounded-xl bg-white border-2 border-slate-100 outline-none focus:border-emerald-500 transition-all font-bold text-slate-900" placeholder="e.g. Paneer Butter Masala" />
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dish Name</label>
+                  <input type="text" value={formData.name || ''} onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))} className="w-full px-5 py-3 rounded-xl bg-white border-2 border-slate-100 outline-none focus:border-emerald-500 transition-all font-bold text-slate-900" />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cuisine Category</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</label>
                   <select value={formData.category} onChange={(e) => setFormData(prev => ({ ...prev, category: e.target.value }))} className="w-full px-5 py-3 rounded-xl bg-white border-2 border-slate-100 font-bold outline-none text-slate-900 appearance-none">
                     {PREDEFINED_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Batch Output Base</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Standard Base</label>
                   <div className="flex gap-2">
                     <button onClick={() => setFormData(prev => ({ ...prev, outputUnit: 'kg' }))} className={`flex-1 py-3 rounded-xl border-2 font-black text-[10px] uppercase transition-all ${formData.outputUnit === 'kg' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>KG</button>
                     <button onClick={() => setFormData(prev => ({ ...prev, outputUnit: 'L' }))} className={`flex-1 py-3 rounded-xl border-2 font-black text-[10px] uppercase transition-all ${formData.outputUnit === 'L' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-100'}`}>LIT</button>
@@ -422,61 +340,69 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                 </div>
               </div>
 
-              {/* Side-by-Side Layout for Density */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
-                {/* BOM Column */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-center border-b-2 border-slate-50 pb-4">
                     <div>
-                      <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Ingredient Mapping (BOM)</h4>
-                      <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest">Requirement per 1.0 {formData.outputUnit?.toUpperCase()}</p>
+                      <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Raw Material Ratios</h4>
+                      <p className="text-[9px] text-emerald-600 font-black uppercase tracking-widest">BOM for 1.0 {formData.outputUnit?.toUpperCase()} of final dish</p>
                     </div>
-                    <button onClick={addIngredient} className="text-[9px] font-black uppercase tracking-widest bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-xl hover:bg-slate-900 hover:text-white transition-all flex items-center gap-2 active:scale-95 shadow-lg shadow-emerald-500/10"><Plus size={14} /> Add Material</button>
+                    <button onClick={addIngredient} className="text-[9px] font-black uppercase tracking-widest bg-emerald-500 text-slate-950 px-5 py-2.5 rounded-xl hover:bg-slate-900 hover:text-white transition-all flex items-center gap-2 shadow-lg"><Plus size={14} /> Add Material</button>
                   </div>
                   
                   <div className="space-y-3">
                     {formData.ingredients?.map((ing, idx) => (
                       <div key={idx} className="relative group/ing">
-                        <div className={`p-4 rounded-2xl border-2 transition-all flex items-center gap-4 ${ing.inventoryItemId ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-50 bg-white'}`}>
-                          <div className="shrink-0">
-                            {ing.inventoryItemId ? <CheckCircle2 size={18} className="text-emerald-500" /> : <AlertCircle size={18} className="text-amber-400" />}
-                          </div>
-                          
-                          <div className="flex-1">
-                            <input type="text" placeholder="Ingredient Name" value={ing.name} onChange={(e) => updateIngredient(idx, 'name', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-900 placeholder:text-slate-300 focus:ring-0 p-0 text-sm" readOnly={!!ing.inventoryItemId} />
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                             <input type="number" step="0.001" value={ing.amount} onChange={(e) => updateIngredient(idx, 'amount', parseFloat(e.target.value) || 0)} className="w-20 px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-100 font-bold text-center text-xs text-slate-900 focus:border-emerald-500 outline-none" />
-                             <select value={ing.unit} onChange={(e) => updateIngredient(idx, 'unit', e.target.value)} disabled={!!ing.inventoryItemId} className="w-16 px-1 py-1.5 rounded-lg bg-slate-50 border border-slate-100 font-black text-[9px] uppercase text-center appearance-none cursor-pointer">
-                               <option value="kg">KG</option>
-                               <option value="g">G</option>
-                               <option value="ml">ML</option>
-                               <option value="L">L</option>
-                               <option value="pcs">PCS</option>
-                             </select>
+                        <div className={`p-4 rounded-2xl border-2 transition-all flex flex-col gap-4 ${ing.inventoryItemId ? 'border-emerald-200 bg-emerald-50/20' : 'border-slate-50 bg-white'}`}>
+                          <div className="flex items-center gap-4">
+                            <div className="shrink-0">
+                              {ing.inventoryItemId ? <CheckCircle2 size={18} className="text-emerald-500" /> : <AlertCircle size={18} className="text-amber-400" />}
+                            </div>
+                            <div className="flex-1">
+                              <input type="text" placeholder="Ingredient Name" value={ing.name} onChange={(e) => updateIngredient(idx, 'name', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-900 placeholder:text-slate-300 focus:ring-0 p-0 text-sm" readOnly={!!ing.inventoryItemId} />
+                            </div>
+                            <div className="flex items-center gap-1 opacity-0 group-hover/ing:opacity-100 transition-all">
+                               {ing.inventoryItemId ? (
+                                 <button onClick={() => unlinkInventoryItem(idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Link2Off size={14} /></button>
+                               ) : (
+                                 <button onClick={() => setLinkingIdx(idx)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg"><Link size={14} /></button>
+                               )}
+                               <button onClick={() => removeIngredient(idx)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><Trash2 size={14} /></button>
+                            </div>
                           </div>
 
-                          <div className="flex items-center gap-1 opacity-0 group-hover/ing:opacity-100 transition-all">
-                             {ing.inventoryItemId ? (
-                               <button onClick={() => unlinkInventoryItem(idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Link2Off size={14} /></button>
-                             ) : (
-                               <button onClick={() => setLinkingIdx(idx)} className="p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg"><Link size={14} /></button>
-                             )}
-                             <button onClick={() => removeIngredient(idx)} className="p-2 text-slate-300 hover:text-rose-500 rounded-lg"><Trash2 size={14} /></button>
+                          <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100/50">
+                             <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest">Base Weight/Qty</label>
+                                <div className="flex items-center gap-2">
+                                  <input type="number" step="0.001" value={ing.amount} onChange={(e) => updateIngredient(idx, 'amount', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg bg-slate-100 border-none font-bold text-xs text-slate-900 outline-none" />
+                                  <span className="text-[10px] font-black text-slate-400 uppercase">{ing.unit}</span>
+                                </div>
+                             </div>
+                             <div className="space-y-1">
+                                <label className="text-[8px] font-black uppercase text-slate-400 tracking-widest flex items-center gap-1.5"><Calculator size={10} /> Conversion Factor</label>
+                                <div className="flex items-center gap-2">
+                                  <input type="number" step="0.01" value={ing.conversionFactor || 1.0} onChange={(e) => updateIngredient(idx, 'conversionFactor', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 rounded-lg bg-slate-900 text-emerald-400 font-black text-xs outline-none" />
+                                  <div className="group relative">
+                                     <Info size={12} className="text-slate-300" />
+                                     <div className="absolute bottom-full right-0 mb-2 w-48 p-3 bg-slate-900 text-white text-[9px] font-bold rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-50">
+                                       Multiplier for shrinkage/waste. <br/> Net Weight × Factor = Stock Deduction.
+                                     </div>
+                                  </div>
+                                </div>
+                             </div>
                           </div>
                         </div>
 
-                        {/* Inventory Search Overlay */}
                         {linkingIdx === idx && (
                           <div className="absolute top-full left-0 right-0 z-50 mt-2 bg-white rounded-2xl shadow-2xl border-2 border-slate-900 p-5 animate-in fade-in slide-in-from-top-2">
                             <div className="flex items-center justify-between mb-4">
-                              <h5 className="font-black text-slate-900 uppercase text-[9px] tracking-widest">Link Master Stock Item</h5>
-                              <button onClick={() => { setLinkingIdx(null); setInvSearch(''); }} className="p-1 hover:bg-slate-100 rounded-lg"><X size={14} className="text-slate-400" /></button>
+                              <h5 className="font-black text-slate-900 uppercase text-[9px] tracking-widest">Link Stock Item</h5>
+                              <button onClick={() => { setLinkingIdx(null); setInvSearch(''); }} className="p-1 hover:bg-slate-100 rounded-lg"><X size={14} /></button>
                             </div>
                             <div className="relative mb-4">
                               <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
-                              <input autoFocus type="text" placeholder="Search master pantry..." value={invSearch} onChange={(e) => setInvSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border-none font-bold text-sm text-slate-900" />
+                              <input autoFocus type="text" placeholder="Search pantry..." value={invSearch} onChange={(e) => setInvSearch(e.target.value)} className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border-none font-bold text-sm text-slate-900" />
                             </div>
                             <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
                                {filteredInventory.map(item => (
@@ -493,25 +419,22 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                   </div>
                 </div>
 
-                {/* Procedure Column */}
                 <div className="space-y-6">
                   <div className="flex justify-between items-center border-b-2 border-slate-50 pb-4">
                     <div>
-                      <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Production Workflow</h4>
-                      <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Standard Operating Procedure (SOP)</p>
+                      <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight">Technical Method</h4>
+                      <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">SOP Steps</p>
                     </div>
-                    <button onClick={addInstruction} className="text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-900 px-5 py-2.5 rounded-xl hover:bg-slate-900 hover:text-white transition-all flex items-center gap-2 active:scale-95"><Plus size={14} /> Add Step</button>
+                    <button onClick={addInstruction} className="text-[9px] font-black uppercase tracking-widest bg-slate-100 text-slate-900 px-5 py-2.5 rounded-xl hover:bg-slate-900 hover:text-white transition-all flex items-center gap-2"><Plus size={14} /> Add Step</button>
                   </div>
-                  
                   <div className="space-y-4">
                     {formData.instructions?.map((inst, idx) => (
                       <div key={idx} className="flex gap-4 group/inst bg-slate-50/50 p-5 rounded-[1.5rem] border border-slate-100 hover:border-slate-200 transition-all">
                          <div className="shrink-0 flex flex-col items-center">
                             <span className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs">{idx + 1}</span>
-                            <div className="flex-1 w-0.5 bg-slate-200 my-2 rounded-full"></div>
                          </div>
-                         <textarea value={inst} onChange={(e) => updateInstruction(idx, e.target.value)} placeholder="Provide technical method instructions..." className="flex-1 bg-transparent border-none focus:ring-0 text-slate-700 font-semibold text-sm leading-relaxed resize-none h-20 p-0 placeholder:text-slate-200" />
-                         <button onClick={() => removeInstruction(idx)} className="self-start p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover/inst:opacity-100 transition-all active:scale-90"><Trash2 size={16} /></button>
+                         <textarea value={inst} onChange={(e) => updateInstruction(idx, e.target.value)} placeholder="Provide specific cooking instructions..." className="flex-1 bg-transparent border-none focus:ring-0 text-slate-700 font-semibold text-sm leading-relaxed resize-none h-20 p-0 placeholder:text-slate-200" />
+                         <button onClick={() => removeInstruction(idx)} className="self-start p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover/inst:opacity-100 transition-all"><Trash2 size={16} /></button>
                       </div>
                     ))}
                   </div>
@@ -519,17 +442,11 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
               </div>
             </div>
 
-            {/* Modal Footer */}
-            <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex flex-col md:flex-row gap-4 shrink-0 mt-auto">
-              <div className="flex-1 hidden md:flex items-center gap-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                <Info size={14} /> Ensure weight measures are net weight post-cleaning.
-              </div>
-              <div className="flex gap-4">
-                <button onClick={() => setIsModalOpen(false)} className="px-8 py-4 text-slate-400 hover:text-rose-500 font-black uppercase tracking-widest text-[10px] transition-all">Discard Spec</button>
-                <button onClick={handleSave} className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 active:scale-95">
-                  <Save size={16} /> Archive Spec to Registry
-                </button>
-              </div>
+            <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex justify-end gap-4 shrink-0">
+               <button onClick={() => setIsModalOpen(false)} className="px-8 py-4 text-slate-400 hover:text-rose-500 font-black uppercase tracking-widest text-[10px] transition-all">Discard Changes</button>
+               <button onClick={handleSave} className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 active:scale-95">
+                  <Save size={16} /> Archive Specification
+               </button>
             </div>
           </div>
         </div>

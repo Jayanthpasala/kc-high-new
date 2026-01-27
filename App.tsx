@@ -141,7 +141,7 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-6">
         <Loader2 className="text-emerald-500 animate-spin" size={64} />
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] animate-pulse">Initializing CulinaOps ERP</p>
+        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] animate-pulse">Initializing KMS Kitchen Management System</p>
       </div>
     );
   }
@@ -182,7 +182,7 @@ const App: React.FC = () => {
           </div>
         </main>
         <footer className="py-6 px-4 md:px-10 text-center text-[10px] font-black text-slate-400 border-t bg-white uppercase tracking-widest">
-          &copy; {new Date().getFullYear()} CulinaOps ERP • {profile?.role?.toUpperCase()} ACCESS • {user.email}
+          &copy; {new Date().getFullYear()} KMS Kitchen Management System • {profile?.role?.toUpperCase()} ACCESS • {user.email}
         </footer>
       </div>
     </div>

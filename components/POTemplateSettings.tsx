@@ -4,11 +4,11 @@ import { Save, Building, FileText, Upload, Trash2, CheckCircle2, Globe, Mail, Ph
 import { POTemplateConfig } from '../types';
 
 const DEFAULT_CONFIG: POTemplateConfig = {
-  companyName: 'CulinaOps Kitchen ERP',
+  companyName: 'KMS Kitchen Management System',
   address: 'Floor 4, Sector 12, Cyber Hub, Mumbai, MH - 400001',
   gstin: '27AAACG1234F1Z5',
   pan: 'ABCDE1234F',
-  email: 'ops@culinaops.com',
+  email: 'ops@kms-kitchen.com',
   phone: '+91 22 4567 8900',
   terms: '1. Quality check mandatory upon delivery.\n2. Invoices must mention PO Reference ID.\n3. Payment within 15 days of verified receipt.'
 };

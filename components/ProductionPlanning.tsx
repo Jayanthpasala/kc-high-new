@@ -101,8 +101,6 @@ export const ProductionPlanning: React.FC = () => {
     const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
     let reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
     let procurements: PendingProcurement[] = JSON.parse(localStorage.getItem('pendingProcurements') || '[]');
-    
-    // Identify recipes missing from the database
     let pendingRecipes: string[] = JSON.parse(localStorage.getItem('pendingRecipes') || '[]');
 
     approvedPlans.forEach(plan => {
@@ -114,10 +112,11 @@ export const ProductionPlanning: React.FC = () => {
             recipe.ingredients.forEach(ing => {
               const key = ing.name.toLowerCase();
               if (!dailyReqs[key]) dailyReqs[key] = { name: ing.name, qty: 0, unit: ing.unit };
-              dailyReqs[key].qty += ing.amount;
+              // Use conversion factor if available for accurate procurement volume
+              const volume = ing.amount * (ing.conversionFactor || 1.0);
+              dailyReqs[key].qty += volume;
             });
           } else {
-            // Recipe missing! Add to pending list if not already there
             if (!pendingRecipes.some(p => p.toLowerCase() === dish.toLowerCase())) {
               pendingRecipes.push(dish);
             }
@@ -139,7 +138,6 @@ export const ProductionPlanning: React.FC = () => {
           invItem.reserved = (invItem.reserved || 0) + req.qty;
           const availNow = invItem.quantity - invItem.reserved;
           if (availNow <= 0) invItem.status = 'out';
-          // Fixed: Changed parLevel to reorderLevel
           else if (availNow < invItem.reorderLevel) invItem.status = 'low';
           else invItem.status = 'healthy';
         }
@@ -167,54 +165,6 @@ export const ProductionPlanning: React.FC = () => {
     window.dispatchEvent(new Event('storage'));
   };
 
-  // --- REVIEW QUEUE EDIT HANDLERS ---
-  const updatePendingPlanDate = (idx: number, date: string) => {
-    const updated = [...pendingPlans];
-    updated[idx].date = date;
-    setPendingPlans(updated);
-  };
-
-  const updatePendingDish = (planIdx: number, mealIdx: number, dishIdx: number, value: string) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals[mealIdx].dishes[dishIdx] = value;
-    setPendingPlans(updated);
-  };
-
-  const addPendingDish = (planIdx: number, mealIdx: number) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals[mealIdx].dishes.push("");
-    setPendingPlans(updated);
-  };
-
-  const removePendingDish = (planIdx: number, mealIdx: number, dishIdx: number) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals[mealIdx].dishes = updated[planIdx].meals[mealIdx].dishes.filter((_, i) => i !== dishIdx);
-    setPendingPlans(updated);
-  };
-
-  const addPendingMeal = (planIdx: number) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals.push({ mealType: "New Meal", dishes: [""] });
-    setPendingPlans(updated);
-  };
-
-  const removePendingMeal = (planIdx: number, mealIdx: number) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals = updated[planIdx].meals.filter((_, i) => i !== mealIdx);
-    setPendingPlans(updated);
-  };
-
-  const updatePendingMealType = (planIdx: number, mealIdx: number, type: string) => {
-    const updated = [...pendingPlans];
-    updated[planIdx].meals[mealIdx].mealType = type;
-    setPendingPlans(updated);
-  };
-
-  const removePendingPlan = (idx: number) => {
-    setPendingPlans(pendingPlans.filter((_, i) => i !== idx));
-  };
-
-  // --- DRAG AND DROP HANDLERS ---
   const handleDragStart = (e: React.DragEvent, planId: string) => {
     setDraggedPlanId(planId);
     e.dataTransfer.setData('planId', planId);
@@ -233,12 +183,9 @@ export const ProductionPlanning: React.FC = () => {
       const updatedPlan = { ...allPlans[planIndex], date: targetDate };
       allPlans[planIndex] = updatedPlan;
       localStorage.setItem('productionPlans', JSON.stringify(allPlans));
-      
-      // Also update reservations date if they exist
       const reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
       const updatedReservations = reservations.map(r => r.planId === planId ? { ...r, date: targetDate } : r);
       localStorage.setItem('inventoryReservations', JSON.stringify(updatedReservations));
-      
       updatePlans();
       setDraggedPlanId(null);
       window.dispatchEvent(new Event('storage'));
@@ -255,22 +202,15 @@ export const ProductionPlanning: React.FC = () => {
     if (!file) return;
     setIsProcessing(true);
     try {
-      const base64 = await fileToBase64(file);
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve) => {
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      });
       const extractedData = await extractMenuWithAI(base64, file.type);
       const safeData = Array.isArray(extractedData) ? extractedData : [];
       const newPlans: ProductionPlan[] = safeData.map((item: any) => {
         let finalDate = item.date || 'INVALID_DATE';
-        if (finalDate !== 'INVALID_DATE') {
-          const d = new Date(finalDate.replace(/-/g, '/'));
-          if (isNaN(d.getTime()) || d.getFullYear() !== currentYear) {
-            const dateParts = finalDate.split('-');
-            if (dateParts.length >= 2) {
-              const month = dateParts[dateParts.length - 2];
-              const day = dateParts[dateParts.length - 1];
-              finalDate = `${currentYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-            }
-          }
-        }
         return {
           id: generateId(), date: finalDate, type: 'production', meals: (item.meals || []).map((m: any) => ({
             mealType: m.mealType || 'Meal', dishes: Array.isArray(m.dishes) ? m.dishes : []
@@ -285,15 +225,6 @@ export const ProductionPlanning: React.FC = () => {
       setIsProcessing(false);
       e.target.value = '';
     }
-  };
-
-  const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve((reader.result as string).split(',')[1]);
-      reader.onerror = error => reject(error);
-    });
   };
 
   const extractMenuWithAI = async (base64: string, mimeType: string) => {
@@ -364,10 +295,11 @@ export const ProductionPlanning: React.FC = () => {
             recipe.ingredients.forEach(ing => {
               const invItemIdx = updatedInventory.findIndex(item => item.name.toLowerCase() === ing.name.toLowerCase());
               if (invItemIdx > -1) {
-                updatedInventory[invItemIdx].quantity = Math.max(0, updatedInventory[invItemIdx].quantity - ing.amount);
-                updatedInventory[invItemIdx].reserved = Math.max(0, (updatedInventory[invItemIdx].reserved || 0) - ing.amount);
+                // APPLY CONVERSION FACTOR FOR DEDUCTION
+                const deduction = ing.amount * (ing.conversionFactor || 1.0);
+                updatedInventory[invItemIdx].quantity = Math.max(0, updatedInventory[invItemIdx].quantity - deduction);
+                updatedInventory[invItemIdx].reserved = Math.max(0, (updatedInventory[invItemIdx].reserved || 0) - deduction);
                 const item = updatedInventory[invItemIdx];
-                // Fixed: Changed parLevel to reorderLevel
                 if (item.quantity <= 0) item.status = 'out';
                 else if (item.quantity < item.reorderLevel) item.status = 'low';
                 else item.status = 'healthy';
@@ -402,177 +334,97 @@ export const ProductionPlanning: React.FC = () => {
 
   return (
     <div className="space-y-8 pb-24">
-      {/* Refined Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
              <CalendarCheck className="text-emerald-500" size={32} />
-             Flexible Planner
+             Cycle Planner
           </h2>
-          <p className="text-slate-500 font-medium mt-1">Drag and drop to reschedule production cycles for {currentYear}.</p>
+          <p className="text-slate-500 font-medium mt-1">Manage production schedules and stock fulfillment logic.</p>
         </div>
         <div className="flex flex-wrap gap-3">
-          {/* View Toggle */}
           <div className="bg-white p-1 rounded-xl border border-slate-200 flex shadow-sm mr-2">
-            <button 
-              onClick={() => setViewMode('MONTH')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'MONTH' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900'}`}
-              title="Month View"
-            >
-              <LayoutGrid size={18} />
-            </button>
-            <button 
-              onClick={() => setViewMode('AGENDA')}
-              className={`p-2 rounded-lg transition-all ${viewMode === 'AGENDA' ? 'bg-slate-900 text-white' : 'text-slate-400 hover:text-slate-900'}`}
-              title="Agenda View"
-            >
-              <ListFilter size={18} />
-            </button>
+            <button onClick={() => setViewMode('MONTH')} className={`p-2 rounded-lg transition-all ${viewMode === 'MONTH' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}><LayoutGrid size={18} /></button>
+            <button onClick={() => setViewMode('AGENDA')} className={`p-2 rounded-lg transition-all ${viewMode === 'AGENDA' ? 'bg-slate-900 text-white' : 'text-slate-400'}`}><ListFilter size={18} /></button>
           </div>
-
           {view !== 'CALENDAR' && (
-            <button onClick={() => setView('CALENDAR')} className="px-5 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest hover:border-slate-400 transition-all shadow-sm">
-              Back
-            </button>
+            <button onClick={() => setView('CALENDAR')} className="px-5 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-xl font-bold text-xs uppercase transition-all shadow-sm">Back</button>
           )}
-          <button onClick={() => setView('UPLOAD')} className="flex items-center gap-2 bg-slate-900 text-white px-7 py-2.5 rounded-xl shadow-lg shadow-slate-900/10 font-bold text-xs uppercase tracking-widest hover:bg-emerald-600 transition-all">
-            <Upload size={16} /> Scan Cycle
-          </button>
+          <button onClick={() => setView('UPLOAD')} className="flex items-center gap-2 bg-slate-900 text-white px-7 py-2.5 rounded-xl shadow-lg font-bold text-xs uppercase transition-all"><Upload size={16} /> Scan Cycle</button>
         </div>
       </div>
 
       {isProcessing && (
-        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[100] flex items-center justify-center p-6 animate-in fade-in duration-500">
-          <div className="bg-white p-12 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center border border-slate-100">
-            <div className="relative w-20 h-20 mx-auto mb-6">
-              <div className="absolute inset-0 bg-emerald-100 rounded-full animate-ping opacity-25"></div>
-              <Loader2 size={80} className="text-emerald-500 animate-spin relative z-10" />
-            </div>
-            <h3 className="text-2xl font-bold text-slate-900">Updating Schedules</h3>
-            <p className="text-slate-500 mt-2 font-semibold text-xs uppercase tracking-[0.2em]">Recalculating Stock Needs</p>
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-md z-[100] flex items-center justify-center p-6">
+          <div className="bg-white p-12 rounded-[2.5rem] shadow-2xl max-w-sm w-full text-center">
+            <Loader2 size={80} className="text-emerald-500 animate-spin mx-auto mb-6" />
+            <h3 className="text-2xl font-bold text-slate-900">Synchronizing Data</h3>
+            <p className="text-slate-500 mt-2 font-semibold text-xs uppercase tracking-widest">Applying conversion factors</p>
           </div>
         </div>
       )}
 
       {view === 'UPLOAD' && (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-24 text-center hover:border-emerald-500/50 hover:bg-emerald-50/10 transition-all group">
-          <div className="bg-emerald-50 w-24 h-24 rounded-3xl flex items-center justify-center mx-auto mb-8 border border-emerald-100 group-hover:scale-110 transition-transform duration-500">
-            <CalendarIcon className="text-emerald-600" size={40} />
-          </div>
-          <h3 className="text-3xl font-bold text-slate-900 tracking-tight">Import {currentYear} Menu</h3>
-          <p className="text-slate-500 max-w-md mx-auto mt-4 font-medium text-lg leading-relaxed">
-            AI handles the parsing. You handle the prep.
-          </p>
+        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-24 text-center">
+          <CalendarIcon className="text-emerald-600 mx-auto mb-8" size={60} />
+          <h3 className="text-3xl font-bold text-slate-900">Import Master Menu</h3>
           <input type="file" id="menu-upload" className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
-          <label htmlFor="menu-upload" className="mt-12 inline-flex items-center gap-3 cursor-pointer bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl">
-            Select Document <ArrowRight size={18} />
-          </label>
+          <label htmlFor="menu-upload" className="mt-12 inline-flex items-center gap-3 cursor-pointer bg-slate-900 text-white px-12 py-5 rounded-2xl font-bold text-sm uppercase transition-all">Select Document <ArrowRight size={18} /></label>
         </div>
       )}
 
       {view === 'REVIEW' && (
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          <div className="bg-slate-900 p-8 rounded-[2rem] flex items-center justify-between shadow-2xl border border-slate-800">
+        <div className="space-y-8 animate-in fade-in duration-500">
+          <div className="bg-slate-900 p-8 rounded-[2rem] flex items-center justify-between border border-slate-800">
              <div className="flex items-center space-x-5">
-               <div className="bg-emerald-500/20 p-2 rounded-xl border border-emerald-500/30">
-                 <AlertCircle className="text-emerald-400" size={24} />
-               </div>
-               <div>
-                 <p className="font-bold text-xl text-white tracking-tight uppercase">Bulk Approval Queue</p>
-                 <p className="text-slate-400 text-xs font-semibold">Verify and edit parsed cycles before finalizing.</p>
-               </div>
+               <AlertCircle className="text-emerald-400" size={24} />
+               <h3 className="text-xl font-bold text-white uppercase tracking-tight">Final Verification Mode</h3>
              </div>
           </div>
-          
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pendingPlans.map((plan, planIdx) => (
-              <div key={planIdx} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm hover:border-emerald-200 transition-all group flex flex-col h-full">
-                 <div className="flex items-center justify-between mb-6">
-                    <input 
-                      type="date" 
-                      value={plan.date} 
-                      onChange={(e) => updatePendingPlanDate(planIdx, e.target.value)} 
-                      className="font-bold text-lg p-1 bg-slate-50 rounded-lg border-none outline-none text-slate-900 focus:text-emerald-600 focus:bg-emerald-50 transition-all" 
-                    />
-                    <button onClick={() => removePendingPlan(planIdx)} className="p-2 text-slate-300 hover:text-rose-500 transition-all"><Trash2 size={16} /></button>
-                 </div>
-                 
+              <div key={planIdx} className="bg-white p-7 rounded-[2.5rem] border border-slate-200 shadow-sm flex flex-col h-full">
+                 <input type="date" value={plan.date} onChange={(e) => {
+                   const updated = [...pendingPlans];
+                   updated[planIdx].date = e.target.value;
+                   setPendingPlans(updated);
+                 }} className="font-bold text-lg p-2 bg-slate-50 rounded-lg border-none mb-6 outline-none text-slate-900" />
                  <div className="flex-1 space-y-5">
                    {plan.meals.map((m, mealIdx) => (
-                     <div key={mealIdx} className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100 relative group/meal">
-                       <div className="flex items-center justify-between mb-4">
-                         <input 
-                            type="text" 
-                            value={m.mealType} 
-                            onChange={(e) => updatePendingMealType(planIdx, mealIdx, e.target.value)}
-                            className="text-[10px] font-black text-emerald-600 uppercase tracking-widest bg-transparent border-none p-0 focus:ring-0 w-2/3" 
-                         />
-                         <button onClick={() => removePendingMeal(planIdx, mealIdx)} className="opacity-0 group-hover/meal:opacity-100 p-1 text-slate-300 hover:text-rose-500 transition-all"><X size={12} /></button>
-                       </div>
-                       
+                     <div key={mealIdx} className="bg-slate-50/50 p-5 rounded-[2rem] border border-slate-100">
+                       <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-4">{m.mealType}</p>
                        <div className="space-y-3">
                          {m.dishes.map((d, dishIdx) => (
-                           <div key={dishIdx} className="flex items-center gap-2 group/dish">
-                             <div className="w-1.5 h-1.5 bg-slate-300 rounded-full shrink-0"></div>
-                             <input 
-                               type="text" 
-                               value={d} 
-                               placeholder="Enter dish name..."
-                               onChange={(e) => updatePendingDish(planIdx, mealIdx, dishIdx, e.target.value)}
-                               className="flex-1 bg-transparent border-none text-sm font-semibold text-slate-700 p-0 focus:ring-0 placeholder:text-slate-300" 
-                             />
-                             <button onClick={() => removePendingDish(planIdx, mealIdx, dishIdx)} className="opacity-0 group-hover/dish:opacity-100 p-1 text-slate-300 hover:text-rose-500"><Trash2 size={12} /></button>
-                           </div>
+                           <p key={dishIdx} className="text-sm font-semibold text-slate-700 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-slate-300 rounded-full"></div>{d}</p>
                          ))}
-                         <button onClick={() => addPendingDish(planIdx, mealIdx)} className="flex items-center gap-2 text-[10px] font-black text-slate-400 hover:text-emerald-500 uppercase tracking-widest pt-2 transition-all">
-                           <Plus size={12} /> Add Dish
-                         </button>
                        </div>
                      </div>
                    ))}
                  </div>
-
-                 <button onClick={() => addPendingMeal(planIdx)} className="mt-6 w-full py-3 rounded-2xl border-2 border-dashed border-slate-100 text-slate-400 hover:border-emerald-200 hover:text-emerald-500 hover:bg-emerald-50/30 transition-all font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2">
-                   <Plus size={14} /> Add Meal Segment
-                 </button>
               </div>
             ))}
-            
-            {pendingPlans.length === 0 && (
-              <div className="col-span-full py-24 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-                <ChefHat size={48} className="mx-auto text-slate-200 mb-4" />
-                <h4 className="text-xl font-bold text-slate-900">Review queue empty</h4>
-                <p className="text-slate-500 text-sm mt-1">Upload a menu to begin processing new cycles.</p>
-              </div>
-            )}
           </div>
-          
           <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[60] flex gap-4">
-             <button onClick={() => setPendingPlans([])} className="bg-white text-slate-600 px-8 py-5 rounded-3xl font-bold uppercase tracking-widest text-sm shadow-2xl hover:bg-slate-50 transition-all border border-slate-200">
-               Discard All
-             </button>
-             <button onClick={handleApproveAll} className="bg-emerald-500 text-slate-950 px-12 py-5 rounded-3xl font-bold uppercase tracking-widest text-sm shadow-2xl hover:scale-105 transition-all flex items-center gap-3 border-2 border-emerald-400 shadow-emerald-500/20">
-               <CheckCircle2 size={18} /> Approve All & Sync Inventory
+             <button onClick={handleApproveAll} className="bg-emerald-500 text-slate-950 px-12 py-5 rounded-3xl font-bold uppercase text-sm shadow-2xl flex items-center gap-3 border-2 border-emerald-400">
+               <CheckCircle2 size={18} /> Approve & Apply Factors
              </button>
           </div>
         </div>
       )}
 
       {view === 'CALENDAR' && viewMode === 'MONTH' && (
-        <div className="bg-white rounded-[2.5rem] shadow-[0_8px_40px_-12px_rgba(0,0,0,0.1)] border border-slate-200 overflow-hidden flex flex-col">
-          <div className="p-8 border-b border-slate-100 flex flex-col lg:flex-row justify-between items-center bg-slate-50/40 gap-6">
-            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">
-              {currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}
-            </h3>
-            <div className="flex items-center bg-white p-2 rounded-2xl shadow-sm border border-slate-100">
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-slate-900"><ChevronLeft size={20} /></button>
-              <button onClick={() => setCurrentMonth(new Date())} className="px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-emerald-600 transition-colors">Today</button>
-              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-3 hover:bg-slate-50 rounded-xl transition-all text-slate-400 hover:text-slate-900"><ChevronRight size={20} /></button>
+        <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden flex flex-col">
+          <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/40">
+            <h3 className="text-3xl font-bold text-slate-900 tracking-tight">{currentMonth.toLocaleString('default', { month: 'long', year: 'numeric' })}</h3>
+            <div className="flex items-center bg-white p-2 rounded-2xl border border-slate-100">
+              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() - 1)))} className="p-3 text-slate-400"><ChevronLeft size={20} /></button>
+              <button onClick={() => setCurrentMonth(new Date())} className="px-6 py-2 text-[10px] font-bold uppercase text-slate-500">Today</button>
+              <button onClick={() => setCurrentMonth(new Date(currentMonth.setMonth(currentMonth.getMonth() + 1)))} className="p-3 text-slate-400"><ChevronRight size={20} /></button>
             </div>
           </div>
           <div className="grid grid-cols-7 border-b border-slate-100 bg-white">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-              <div key={day} className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">{day}</div>
+              <div key={day} className="py-4 text-center text-[10px] font-bold text-slate-400 uppercase">{day}</div>
             ))}
           </div>
           <div className="grid grid-cols-7 bg-slate-50/20">
@@ -580,47 +432,19 @@ export const ProductionPlanning: React.FC = () => {
               const plan = date ? getPlanForDate(date) : null;
               const isToday = date?.toDateString() === new Date().toDateString();
               const dateStr = date ? getLocalDateString(date) : '';
-              let bgColor = 'bg-white';
-              if (plan?.isConsumed) bgColor = 'bg-slate-100/50';
-
               return (
-                <div 
-                  key={i} 
-                  className={`min-h-[160px] border-r border-b border-slate-100/80 p-4 transition-all relative group cursor-pointer ${!date ? 'bg-slate-50/30' : `${bgColor} hover:bg-emerald-50/20`}`}
-                  onDragOver={handleDragOver}
-                  onDrop={(e) => date && handleDrop(e, dateStr)}
-                  onClick={() => date && plan && setSelectedPlan(plan)}
-                >
+                <div key={i} className={`min-h-[160px] border-r border-b border-slate-100/80 p-4 relative group cursor-pointer ${!date ? 'bg-slate-50/30' : 'bg-white hover:bg-emerald-50/20'}`} onDragOver={handleDragOver} onDrop={(e) => date && handleDrop(e, dateStr)} onClick={() => date && plan && setSelectedPlan(plan)}>
                   {date && (
                     <>
-                      <div className="flex justify-between items-start mb-2 pointer-events-none">
-                        <span className={`text-sm font-bold w-9 h-9 flex items-center justify-center rounded-xl transition-all ${isToday ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400 group-hover:text-slate-900'}`}>{date.getDate()}</span>
+                      <div className="flex justify-between items-start mb-2">
+                        <span className={`text-sm font-bold w-9 h-9 flex items-center justify-center rounded-xl ${isToday ? 'bg-slate-900 text-white shadow-xl' : 'text-slate-400'}`}>{date.getDate()}</span>
                         {plan && <div className="p-2 rounded-xl text-white shadow-lg bg-emerald-500"><ChefHat size={14} /></div>}
                       </div>
-                      <div className="space-y-1.5 mt-3">
-                        {plan && (
-                          <div 
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, plan.id)}
-                            className={`p-2 rounded-xl border border-slate-200 shadow-sm transition-all hover:shadow-md active:scale-95 cursor-grab active:cursor-grabbing ${plan.isConsumed ? 'bg-slate-50 opacity-60' : 'bg-white group-hover:border-emerald-200'}`}
-                          >
-                             <div className="flex items-center gap-1.5 mb-1.5">
-                                <GripVertical size={10} className="text-slate-300" />
-                                <span className="text-[10px] font-bold uppercase text-slate-900 tracking-tight">Cycle Active</span>
-                             </div>
-                             {plan.meals.slice(0, 1).map((m, idx) => (
-                                <div key={idx} className="text-[9px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                                   <Zap size={8} className="text-emerald-500" /> {m.mealType}
-                                </div>
-                             ))}
-                          </div>
-                        )}
-                        {!plan && (
-                          <div className="hidden group-hover:flex items-center justify-center py-6 animate-in fade-in">
-                             <Plus size={16} className="text-slate-300" />
-                          </div>
-                        )}
-                      </div>
+                      {plan && (
+                        <div draggable onDragStart={(e) => handleDragStart(e, plan.id)} className={`p-2 rounded-xl border border-slate-200 shadow-sm transition-all ${plan.isConsumed ? 'bg-slate-50 opacity-60' : 'bg-white'}`}>
+                           <span className="text-[9px] font-black uppercase text-slate-900">Active Production</span>
+                        </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -630,90 +454,26 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
-      {view === 'CALENDAR' && viewMode === 'AGENDA' && (
-        <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
-           {approvedPlans.length > 0 ? (
-             <div className="bg-white rounded-[2.5rem] border border-slate-200 overflow-hidden shadow-sm divide-y">
-                {approvedPlans.map((plan) => (
-                  <div 
-                    key={plan.id} 
-                    className="p-8 hover:bg-slate-50 transition-all group flex flex-col md:flex-row gap-8 items-start cursor-pointer"
-                    onClick={() => setSelectedPlan(plan)}
-                  >
-                    <div className="flex items-center gap-6 min-w-[200px]">
-                       <div className={`w-14 h-14 rounded-2xl flex flex-col items-center justify-center font-black ${plan.isConsumed ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}>
-                          <span className="text-xs uppercase tracking-widest">{new Date(plan.date.replace(/-/g, '/')).toLocaleString('default', { month: 'short' })}</span>
-                          <span className="text-xl leading-none">{new Date(plan.date.replace(/-/g, '/')).getDate()}</span>
-                       </div>
-                       <div>
-                          <p className="font-bold text-slate-900 text-lg">{new Date(plan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long' })}</p>
-                          <p className={`text-[10px] font-bold uppercase tracking-widest ${plan.isConsumed ? 'text-slate-400' : 'text-emerald-500'}`}>
-                             {plan.isConsumed ? 'Prep Complete' : 'Production Active'}
-                          </p>
-                       </div>
-                    </div>
-                    
-                    <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                       {plan.meals.map((meal, idx) => (
-                         <div key={idx} className="bg-white border border-slate-100 p-4 rounded-2xl shadow-sm group-hover:border-slate-200 transition-all">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">{meal.mealType}</p>
-                            <div className="flex flex-wrap gap-1.5">
-                               {meal.dishes.map((dish, di) => (
-                                 <span key={di} className="text-xs font-semibold bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">{dish}</span>
-                               ))}
-                            </div>
-                         </div>
-                       ))}
-                    </div>
-
-                    <div className="flex items-center gap-2 self-center">
-                       <button className="p-3 text-slate-300 hover:text-emerald-500 hover:bg-emerald-50 rounded-xl transition-all">
-                          <Edit3 size={18} />
-                       </button>
-                    </div>
-                  </div>
-                ))}
-             </div>
-           ) : (
-             <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-slate-100">
-                <div className="bg-slate-50 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 text-slate-300 shadow-sm"><ClipboardList size={40} /></div>
-                <h4 className="text-2xl font-black text-slate-900">No active cycles</h4>
-                <p className="text-slate-500 font-bold mt-2">Switch to scan mode to import your weekly menus.</p>
-             </div>
-           )}
-        </div>
-      )}
-
       {selectedPlan && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-500">
-            <div className="bg-slate-900 p-10 text-white flex justify-between items-center relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full -mr-20 -mt-20 blur-3xl"></div>
-              <div className="relative z-10">
-                <p className="text-emerald-400 text-[10px] font-bold uppercase tracking-[0.4em] mb-3">Cycle Manager</p>
-                <h3 className="text-4xl font-bold tracking-tight">{new Date(selectedPlan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' })}</h3>
-              </div>
-              <button onClick={() => setSelectedPlan(null)} className="p-4 bg-white/10 hover:bg-rose-500 text-white rounded-2xl transition-all relative z-10"><X size={24} /></button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/60 backdrop-blur-xl">
+          <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100">
+            <div className="bg-slate-900 p-10 text-white flex justify-between items-center relative">
+              <h3 className="text-3xl font-bold tracking-tight">{new Date(selectedPlan.date.replace(/-/g, '/')).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</h3>
+              <button onClick={() => setSelectedPlan(null)} className="p-4 bg-white/10 text-white rounded-2xl"><X size={24} /></button>
             </div>
             <div className="flex border-b border-slate-100 bg-slate-50/50 px-6">
-              {[
-                { id: 'plan', label: 'Cycle Items', icon: <ChefHat size={16} /> }, 
-                { id: 'consumption', label: 'Ready for Service', icon: <Zap size={16} /> }
-              ].map(tab => (
-                <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`px-8 py-5 flex items-center gap-3 text-xs font-bold uppercase tracking-widest transition-all border-b-2 ${activeTab === tab.id ? 'border-emerald-500 text-emerald-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
-                  {tab.icon}<span>{tab.label}</span>
-                </button>
-              ))}
+              <button onClick={() => setActiveTab('plan')} className={`px-8 py-5 text-xs font-bold uppercase transition-all border-b-2 ${activeTab === 'plan' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400'}`}>Items</button>
+              <button onClick={() => setActiveTab('consumption')} className={`px-8 py-5 text-xs font-bold uppercase transition-all border-b-2 ${activeTab === 'consumption' ? 'border-emerald-500 text-emerald-600' : 'border-transparent text-slate-400'}`}>Consumption</button>
             </div>
             <div className="p-10 max-h-[50vh] overflow-y-auto">
               {activeTab === 'plan' && (
                 <div className="space-y-6">
                   {selectedPlan.meals.map((meal, i) => (
                     <div key={i} className="bg-slate-50 p-7 rounded-[2rem] border border-slate-100 shadow-sm">
-                      <h4 className="text-lg font-bold text-slate-900 mb-5 flex items-center gap-2"><div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>{meal.mealType}</h4>
+                      <h4 className="text-lg font-bold text-slate-900 mb-5">{meal.mealType}</h4>
                       <div className="flex flex-wrap gap-2.5">
                         {meal.dishes.map((dish, di) => (
-                          <div key={di} className="px-5 py-2.5 rounded-xl text-sm font-semibold shadow-sm bg-white border border-slate-100 text-slate-700">{dish}</div>
+                          <div key={di} className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white border border-slate-100 text-slate-700">{dish}</div>
                         ))}
                       </div>
                     </div>
@@ -723,36 +483,23 @@ export const ProductionPlanning: React.FC = () => {
               {activeTab === 'consumption' && (
                 <div className="space-y-8 py-4">
                   <div className="bg-[#1e293b] text-white p-10 rounded-[2.5rem] flex items-center justify-between shadow-xl">
-                    <div className="space-y-1">
-                      <h4 className="text-2xl font-bold">Cycle Completion</h4>
-                      <p className="text-slate-400 font-medium">Finalize production to update master inventory.</p>
-                    </div>
-                    <button 
-                      onClick={() => toggleConsumption(selectedPlan.id)} 
-                      className={`w-20 h-10 rounded-full transition-all duration-500 relative border-2 ${selectedPlan.isConsumed ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)]' : 'bg-slate-700 border-slate-600'}`}
-                    >
+                    <h4 className="text-2xl font-bold">Mark for Service</h4>
+                    <button onClick={() => toggleConsumption(selectedPlan.id)} className={`w-20 h-10 rounded-full transition-all duration-500 relative border-2 ${selectedPlan.isConsumed ? 'bg-emerald-500 border-emerald-400' : 'bg-slate-700 border-slate-600'}`}>
                       <div className={`absolute top-1.5 w-6 h-6 rounded-full bg-white shadow-xl transition-all duration-500 ${selectedPlan.isConsumed ? 'left-12' : 'left-1.5'}`}></div>
                     </button>
                   </div>
                   {selectedPlan.isConsumed && (
-                    <div className="p-10 border border-emerald-100 bg-emerald-50/50 rounded-[2.5rem] flex flex-col items-center text-center space-y-4 animate-in zoom-in-95 duration-500">
-                      <div className="bg-emerald-100 p-4 rounded-full text-emerald-600"><CheckCircle size={40} /></div>
-                      <h4 className="text-xl font-bold text-emerald-900">Successfully Recorded</h4>
-                      <p className="text-emerald-700/70 font-medium text-sm max-w-sm">Stock levels adjusted and prep logs archived.</p>
+                    <div className="p-10 border border-emerald-100 bg-emerald-50/50 rounded-[2.5rem] text-center">
+                       <CheckCircle size={40} className="text-emerald-500 mx-auto mb-4" />
+                       <h4 className="text-xl font-bold text-emerald-900">Inventory Settle Complete</h4>
+                       <p className="text-emerald-700/70 text-sm mt-2">Deducted including wastage factors.</p>
                     </div>
                   )}
                 </div>
               )}
             </div>
-            <div className="p-10 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3">
-               <button onClick={() => {
-                 if(confirm("Permanently remove this cycle?")) {
-                   mockFirestore.delete(selectedPlan.id);
-                   updatePlans();
-                   setSelectedPlan(null);
-                 }
-               }} className="px-6 py-4 text-[10px] font-bold uppercase tracking-[0.2em] text-rose-500 hover:bg-rose-50 rounded-2xl transition-all">Remove</button>
-               <button onClick={() => setSelectedPlan(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest shadow-xl hover:bg-emerald-600 transition-all">Close</button>
+            <div className="p-10 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+               <button onClick={() => setSelectedPlan(null)} className="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold text-xs uppercase shadow-xl">Close</button>
             </div>
           </div>
         </div>
