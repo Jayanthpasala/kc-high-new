@@ -1,4 +1,5 @@
 
+
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
@@ -11,8 +12,8 @@ interface State {
   error?: Error;
 }
 
-// Fixed: Explicitly extend React.Component from the React import to ensure that setState and props are correctly inherited and recognized by the TypeScript compiler.
-class ErrorBoundary extends React.Component<Props, State> {
+// Fixed: Use the named import 'Component' directly to ensure that properties like setState and props are correctly inherited and accessible within the class.
+class ErrorBoundary extends Component<Props, State> {
   public state: State = {
     hasError: false,
   };
@@ -25,7 +26,7 @@ class ErrorBoundary extends React.Component<Props, State> {
     console.error("Uncaught error in module:", error, errorInfo);
   }
 
-  // Fixed: handleReset is an arrow function to preserve lexical 'this' context and correctly access this.setState from React.Component.
+  // Fixed: handleReset now correctly references the inherited setState method from the Component class.
   private handleReset = () => {
     this.setState({ hasError: false, error: undefined });
   };
@@ -59,7 +60,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Fixed: Correctly accessing children via this.props which is now recognized by the compiler as an inherited property.
+    // Fixed: Correctly access the children prop which is defined as an inherited property from the Component class.
     return this.props.children;
   }
 }

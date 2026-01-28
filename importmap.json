@@ -6,15 +6,12 @@
     "react-dom": "https://esm.sh/react-dom@19.0.0",
     "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
     "react-router-dom": "https://esm.sh/react-router-dom@6.22.3?external=react,react-dom",
-    
     "lucide-react": "https://esm.sh/lucide-react@0.463.0?external=react,react-dom",
-
     "firebase/app": "https://esm.sh/firebase@10.13.2/app",
     "firebase/auth": "https://esm.sh/firebase@10.13.2/auth",
     "firebase/firestore": "https://esm.sh/firebase@10.13.2/firestore",
     "firebase/storage": "https://esm.sh/firebase@10.13.2/storage",
     "firebase/functions": "https://esm.sh/firebase@10.13.2/functions",
-
     "@google/genai": "https://esm.sh/@google/genai@0.2.1",
     "jspdf": "https://esm.sh/jspdf@2.5.1?external=react,react-dom"
   }

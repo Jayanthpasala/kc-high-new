@@ -6,7 +6,7 @@ import {
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// Updated with the user's latest credentials
+// Updated with your project credentials
 const firebaseConfig = {
   apiKey: "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA",
   authDomain: "aestrytfyguh.firebaseapp.com",
