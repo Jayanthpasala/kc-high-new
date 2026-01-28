@@ -25,18 +25,24 @@ const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [activePage, setActivePage] = useState<PageId>(PageId.DASHBOARD);
+
+  // 🔥 NEW: Read page from URL hash on load
+  const getPageFromHash = (): PageId => {
+    const hash = window.location.hash.replace("#", "");
+    return Object.values(PageId).includes(hash as PageId)
+      ? (hash as PageId)
+      : PageId.DASHBOARD;
+  };
+
+  const [activePage, setActivePage] = useState<PageId>(getPageFromHash());
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [permissionError, setPermissionError] = useState(false);
 
   useEffect(() => {
-    // Safety timeout: If Firebase auth hangs, don't leave user on a blank loader forever
     const safetyTimeout = setTimeout(() => {
-      if (authLoading) {
-        console.warn("Auth initialization taking too long. Attempting to proceed...");
-        setAuthLoading(false);
-      }
+      if (authLoading) setAuthLoading(false);
     }, 6000);
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
@@ -72,24 +78,12 @@ const App: React.FC = () => {
             setProfile(data);
             
             const unsubProfile = onSnapshot(userDocRef, (doc) => {
-              if (doc.exists()) {
-                setProfile(doc.data() as UserProfile);
-              }
-            }, (error) => {
-              console.warn("Firestore listener restricted:", error.message);
+              if (doc.exists()) setProfile(doc.data() as UserProfile);
             });
             return () => unsubProfile();
           }
-        } catch (e) {
-          console.error("Firebase Permission or Network Error:", e);
+        } catch {
           setPermissionError(true);
-          setProfile({
-            uid: currentUser.uid,
-            email: currentUser.email || '',
-            role: currentUser.email === 'jayanthpasala10@gmail.com' ? 'owner' : 'staff',
-            displayName: currentUser.displayName || '',
-            createdAt: Date.now()
-          });
         }
       } else {
         setProfile(null);
@@ -99,8 +93,7 @@ const App: React.FC = () => {
     });
 
     const handleResize = () => {
-      if (window.innerWidth < 1024) setIsSidebarCollapsed(true);
-      else setIsSidebarCollapsed(false);
+      setIsSidebarCollapsed(window.innerWidth < 1024);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -112,23 +105,14 @@ const App: React.FC = () => {
     };
   }, []);
 
+  // 🔥 NEW: Update URL hash when page changes
+  useEffect(() => {
+    window.location.hash = activePage;
+  }, [activePage]);
+
   const renderContent = () => {
     if (activePage === PageId.USERS && profile?.role !== 'owner') {
-      return (
-        <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[3rem] border-2 border-slate-100 shadow-sm animate-in fade-in duration-500">
-           <div className="bg-rose-50 p-6 rounded-full text-rose-500 mb-6 border border-rose-100">
-              <ShieldAlert size={48} />
-           </div>
-           <h2 className="text-3xl font-black text-slate-900 tracking-tight">Access Restricted</h2>
-           <p className="text-slate-500 font-bold mt-2 uppercase text-[10px] tracking-widest">Ownership Privileges Required to Manage Users</p>
-           <button 
-             onClick={() => setActivePage(PageId.DASHBOARD)} 
-             className="mt-10 px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl"
-           >
-             Return to Dashboard
-           </button>
-        </div>
-      );
+      return <PlaceholderPage title="Access Restricted" />;
     }
 
     switch (activePage) {
@@ -147,57 +131,31 @@ const App: React.FC = () => {
     }
   };
 
-  const closeMobileMenu = () => setIsMobileMenuOpen(false);
-
   if (authLoading) {
-    return (
-      <div className="min-h-screen bg-[#0f172a] flex flex-col items-center justify-center space-y-6">
-        <Loader2 className="text-emerald-500 animate-spin" size={64} />
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.4em] animate-pulse">Initializing KMS System</p>
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin" /></div>;
   }
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-['Inter']">
+    <div className="min-h-screen flex bg-slate-50">
       <Sidebar 
         activePage={activePage} 
-        setActivePage={(page) => { setActivePage(page); closeMobileMenu(); }} 
+        setActivePage={(page) => { setActivePage(page); setIsMobileMenuOpen(false); }} 
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
         isMobileOpen={isMobileMenuOpen}
         setIsMobileOpen={setIsMobileMenuOpen}
         userRole={profile?.role || 'staff'}
       />
-      
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 lg:hidden" onClick={closeMobileMenu} />
-      )}
-      
-      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+
+      <div className="flex-1 flex flex-col">
         <Header activePage={activePage} isSidebarCollapsed={isSidebarCollapsed} onMenuClick={() => setIsMobileMenuOpen(true)} />
-        <main className="flex-1 mt-16 p-4 md:p-6 lg:p-10">
-          <div className="max-w-7xl mx-auto">
-            {permissionError && (
-              <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-4 animate-in slide-in-from-top-4">
-                <AlertTriangle className="text-amber-500 shrink-0" size={20} />
-                <p className="text-[10px] font-black uppercase text-amber-700 tracking-widest leading-relaxed">
-                  Database Link Limited: Please ensure Firebase Firestore Rules are set to 'allow read, write: if request.auth != null;'. Using local fallback profile.
-                </p>
-              </div>
-            )}
-            <ErrorBoundary>
-              {renderContent()}
-            </ErrorBoundary>
-          </div>
+        <main className="flex-1 mt-16 p-6">
+          <ErrorBoundary>
+            {renderContent()}
+          </ErrorBoundary>
         </main>
-        <footer className="py-6 px-4 md:px-10 text-center text-[10px] font-black text-slate-400 border-t bg-white uppercase tracking-widest">
-          &copy; {new Date().getFullYear()} KMS Kitchen Management System • {profile?.role?.toUpperCase()} ACCESS • {user.email}
-        </footer>
       </div>
     </div>
   );
