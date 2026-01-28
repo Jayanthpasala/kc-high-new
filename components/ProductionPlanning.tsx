@@ -257,14 +257,16 @@ export const ProductionPlanning: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!process.env.API_KEY) {
+    // Use a robust check for the shimmed API key
+    const apiKey = window.process?.env?.API_KEY;
+    if (!apiKey) {
         alert("System Configuration Error: API Key missing from environment.");
         return;
     }
 
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
@@ -447,30 +449,44 @@ export const ProductionPlanning: React.FC = () => {
            
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {pendingPlans.map((plan, i) => (
-                 <div key={i} className="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                 <div key={i} className="bg-white p-6 rounded-[2rem] border-2 border-slate-200 shadow-sm">
                     <div className="mb-4">
                        <label className="text-[10px] font-black uppercase text-slate-400">Date</label>
-                       <input type="date" value={plan.date} onChange={(e) => {
-                          const up = [...pendingPlans];
-                          up[i].date = e.target.value;
-                          setPendingPlans(up);
-                       }} className="w-full font-bold text-lg bg-transparent border-b border-slate-200 focus:border-emerald-500 outline-none text-slate-900" />
+                       <input 
+                         type="date" 
+                         value={plan.date} 
+                         onChange={(e) => {
+                            const up = [...pendingPlans];
+                            up[i].date = e.target.value;
+                            setPendingPlans(up);
+                         }} 
+                         className="w-full font-bold text-lg bg-slate-50 border-2 border-transparent focus:border-emerald-500 rounded-xl px-4 py-2 outline-none text-slate-900 transition-all" 
+                       />
                     </div>
                     <div className="space-y-4">
                        {plan.meals.map((m, mi) => (
-                          <div key={mi} className="bg-slate-50 p-4 rounded-xl">
-                             <input value={m.mealType} onChange={(e) => {
-                                const up = [...pendingPlans];
-                                up[i].meals[mi].mealType = e.target.value;
-                                setPendingPlans(up);
-                             }} className="font-bold text-sm bg-transparent border-none w-full text-emerald-700 mb-2" />
+                          <div key={mi} className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+                             <input 
+                               value={m.mealType} 
+                               onChange={(e) => {
+                                  const up = [...pendingPlans];
+                                  up[i].meals[mi].mealType = e.target.value;
+                                  setPendingPlans(up);
+                               }} 
+                               className="font-black text-sm bg-transparent border-none w-full text-emerald-700 mb-2 focus:ring-0" 
+                             />
                              <div className="space-y-2">
                                 {m.dishes.map((d, di) => (
-                                   <input key={di} value={d} onChange={(e) => {
-                                      const up = [...pendingPlans];
-                                      up[i].meals[mi].dishes[di] = e.target.value;
-                                      setPendingPlans(up);
-                                   }} className="w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold" />
+                                   <input 
+                                     key={di} 
+                                     value={d} 
+                                     onChange={(e) => {
+                                        const up = [...pendingPlans];
+                                        up[i].meals[mi].dishes[di] = e.target.value;
+                                        setPendingPlans(up);
+                                     }} 
+                                     className="w-full text-sm bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-900 font-bold focus:border-emerald-500 outline-none transition-all shadow-sm" 
+                                   />
                                 ))}
                              </div>
                           </div>
@@ -595,7 +611,7 @@ export const ProductionPlanning: React.FC = () => {
                               <input 
                                 type="text" 
                                 placeholder="Dish Name" 
-                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-colors"
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-colors shadow-sm"
                                 value={meal.dishes[0]}
                                 onChange={(e) => {
                                     const updated = [...manualMeals];
@@ -617,13 +633,13 @@ export const ProductionPlanning: React.FC = () => {
                         <input 
                           type="text" 
                           placeholder="Event Title" 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-lg font-bold text-slate-900 outline-none focus:border-purple-500 transition-colors"
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-lg font-bold text-slate-900 outline-none focus:border-purple-500 transition-colors shadow-inner"
                           value={manualEventName}
                           onChange={(e) => setManualEventName(e.target.value)}
                         />
                         <textarea 
                           placeholder="Notes..." 
-                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-medium text-slate-900 outline-none focus:border-purple-500 transition-colors resize-none h-32"
+                          className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-medium text-slate-900 outline-none focus:border-purple-500 transition-colors resize-none h-32 shadow-inner"
                           value={manualNotes}
                           onChange={(e) => setManualNotes(e.target.value)}
                         />

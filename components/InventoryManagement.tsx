@@ -71,14 +71,16 @@ export const InventoryManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!process.env.API_KEY) {
+    // Robust check for shimmed API key
+    const apiKey = window.process?.env?.API_KEY;
+    if (!apiKey) {
         alert("System Configuration Error: API Key missing from environment.");
         return;
     }
 
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
 
       let promptText = `Extract inventory items from this file. Return a JSON array of objects with name, quantity, unit, lastPrice, brand, and category.`;
 

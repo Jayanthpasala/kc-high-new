@@ -28,11 +28,12 @@
 
     <script>
       // Global configuration shims
-      window.process = window.process || {};
-      window.process.env = window.process.env || {};
-      
-      // Explicitly set the API Key from the provided credentials
-      window.process.env.API_KEY = "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA";
+      // Use an immediate assignment to ensure process.env is available for all modules
+      window.process = {
+        env: {
+          API_KEY: "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA"
+        }
+      };
 
       window.addEventListener('error', (e) => {
         console.error('System Failure:', e.message);
@@ -52,7 +53,7 @@
       });
     </script>
 
-    <!-- Use single consolidated importmap from importmap.json -->
+    <!-- Single source of truth for dependencies. Duplicate maps are removed. -->
     <script type="importmap" src="./importmap.json"></script>
 <script type="importmap">
 {
