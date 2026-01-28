@@ -270,7 +270,7 @@ export const ProductionPlanning: React.FC = () => {
       
       // Empty slots for previous month
       for (let i = 0; i < startDay; i++) {
-          grid.push(<div key={`empty-${i}`} className="bg-slate-50/30 border-r border-b border-slate-100 h-32 md:h-40"></div>);
+          grid.push(<div key={`empty-${i}`} className="bg-slate-50/30 border-r border-b border-slate-100 h-24 sm:h-32 md:h-40"></div>);
       }
 
       // Days
@@ -283,27 +283,27 @@ export const ProductionPlanning: React.FC = () => {
           grid.push(
               <div 
                 key={day} 
-                className={`border-r border-b border-slate-100 h-32 md:h-40 p-2 relative group transition-all hover:bg-slate-50 cursor-pointer ${isToday ? 'bg-emerald-50/30' : 'bg-white'}`}
+                className={`border-r border-b border-slate-100 h-24 sm:h-32 md:h-40 p-2 relative group transition-all hover:bg-slate-50 cursor-pointer ${isToday ? 'bg-emerald-50/30' : 'bg-white'}`}
                 onClick={() => {
                    if (dayPlans.length > 0) setSelectedPlan(dayPlans[0]);
                 }}
               >
                  <div className="flex justify-between items-start">
-                     <span className={`text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>{day}</span>
+                     <span className={`text-sm font-bold w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>{day}</span>
                      {dayPlans.length > 0 && (
-                         <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${dayPlans[0].isConsumed ? 'bg-slate-200 text-slate-500' : 'bg-emerald-100 text-emerald-600'}`}>
+                         <span className={`text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${dayPlans[0].isConsumed ? 'bg-slate-200 text-slate-500' : 'bg-emerald-100 text-emerald-600'}`}>
                             {dayPlans[0].isConsumed ? 'Done' : 'Active'}
                          </span>
                      )}
                  </div>
                  
-                 <div className="mt-2 space-y-1 overflow-y-auto max-h-[80px] custom-scrollbar">
+                 <div className="mt-2 space-y-1 overflow-y-auto max-h-[50px] sm:max-h-[80px] custom-scrollbar">
                      {dayPlans.map(plan => (
-                         <div key={plan.id} className="bg-white border border-slate-200 rounded-lg p-2 shadow-sm hover:border-emerald-500 transition-colors">
+                         <div key={plan.id} className="bg-white border border-slate-200 rounded-lg p-1.5 sm:p-2 shadow-sm hover:border-emerald-500 transition-colors">
                             {plan.meals.slice(0, 2).map((m, i) => (
                                 <div key={i} className="flex gap-1 items-center mb-1">
-                                    <div className={`w-1.5 h-1.5 rounded-full ${m.mealType.includes('Breakfast') ? 'bg-amber-400' : m.mealType.includes('Lunch') ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
-                                    <span className="text-[9px] font-bold text-slate-700 truncate w-full">{m.dishes[0]}</span>
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.mealType.includes('Breakfast') ? 'bg-amber-400' : m.mealType.includes('Lunch') ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
+                                    <span className="text-[8px] sm:text-[9px] font-bold text-slate-700 truncate w-full">{m.dishes[0]}</span>
                                 </div>
                             ))}
                             {plan.meals.length > 2 && <span className="text-[8px] text-slate-400 block text-center">+ {plan.meals.length - 2} more</span>}
@@ -346,7 +346,7 @@ export const ProductionPlanning: React.FC = () => {
       )}
 
       {view === 'UPLOAD' && (
-        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-24 text-center">
+        <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-12 sm:p-24 text-center">
           <CalendarIcon className="text-emerald-600 mx-auto mb-8" size={60} />
           <h3 className="text-3xl font-bold text-slate-900">Import Master Menu</h3>
           <p className="text-slate-500 mt-2 max-w-md mx-auto">Upload a PDF or Image of your weekly/monthly meal plan. The AI will extract dates and dishes automatically.</p>
@@ -420,7 +420,7 @@ export const ProductionPlanning: React.FC = () => {
 
             <div className="grid grid-cols-7 border-b border-slate-100 bg-white sticky top-0 z-10">
                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                  <div key={day} className="py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest">{day}</div>
+                  <div key={day} className="py-4 text-center text-[8px] sm:text-[10px] font-black text-slate-400 uppercase tracking-widest">{day}</div>
                ))}
             </div>
 

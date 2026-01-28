@@ -153,7 +153,7 @@ export const Forecasting: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group">
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group min-h-[250px]">
              <div className="relative z-10">
                 <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4">Urgent Attention</p>
                 <p className="text-5xl font-black text-white tracking-tighter">{forecasts.filter(f => f.status === 'CRITICAL' || f.status === 'EMPTY').length}</p>
@@ -170,48 +170,50 @@ export const Forecasting: React.FC = () => {
           <h3 className="text-2xl font-black text-slate-900 tracking-tight">Stock Runway Estimates</h3>
         </div>
         <div className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-sm overflow-hidden">
-          <div className="divide-y divide-slate-100">
-             <div className="grid grid-cols-12 p-6 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                <div className="col-span-4">Item Name</div>
-                <div className="col-span-3">Est. Daily Usage</div>
-                <div className="col-span-3">Days Left</div>
-                <div className="col-span-2 text-right">Status</div>
-             </div>
-             {forecasts.map((f, i) => (
-               <div key={i} className="p-6 grid grid-cols-12 items-center hover:bg-slate-50 transition-all group">
-                  <div className="col-span-4">
-                     <h4 className="font-bold text-slate-900">{f.name}</h4>
-                     <p className="text-xs text-slate-400 font-medium">Current: {f.current.toFixed(1)} {f.unit}</p>
-                  </div>
-                  
-                  <div className="col-span-3 text-sm text-slate-600 font-bold">
-                     {f.dailyUsage > 0 ? `${f.dailyUsage.toFixed(2)} ${f.unit}/day` : '-'}
-                  </div>
-
-                  <div className="col-span-3">
-                     {f.dailyUsage > 0 ? (
-                       <div className="flex items-center gap-2">
-                          <span className={`text-xl font-black ${f.daysLeft < 3 ? 'text-rose-500' : f.daysLeft < 7 ? 'text-amber-500' : 'text-emerald-500'}`}>
-                             {f.daysLeft.toFixed(0)}
-                          </span>
-                          <span className="text-[10px] font-bold uppercase text-slate-400">Days</span>
-                       </div>
-                     ) : (
-                       <span className="text-xs text-slate-300 font-bold">No Usage Data</span>
-                     )}
-                  </div>
-
-                  <div className="col-span-2 text-right">
-                     <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                         f.status === 'SAFE' ? 'bg-emerald-100 text-emerald-600' :
-                         f.status === 'LOW' ? 'bg-amber-100 text-amber-600' :
-                         'bg-rose-100 text-rose-600'
-                     }`}>
-                         {f.status}
-                     </span>
-                  </div>
+          <div className="overflow-x-auto">
+            <div className="divide-y divide-slate-100 min-w-[700px]">
+               <div className="grid grid-cols-12 p-6 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+                  <div className="col-span-4">Item Name</div>
+                  <div className="col-span-3">Est. Daily Usage</div>
+                  <div className="col-span-3">Days Left</div>
+                  <div className="col-span-2 text-right">Status</div>
                </div>
-             ))}
+               {forecasts.map((f, i) => (
+                 <div key={i} className="p-6 grid grid-cols-12 items-center hover:bg-slate-50 transition-all group">
+                    <div className="col-span-4">
+                       <h4 className="font-bold text-slate-900">{f.name}</h4>
+                       <p className="text-xs text-slate-400 font-medium">Current: {f.current.toFixed(1)} {f.unit}</p>
+                    </div>
+                    
+                    <div className="col-span-3 text-sm text-slate-600 font-bold">
+                       {f.dailyUsage > 0 ? `${f.dailyUsage.toFixed(2)} ${f.unit}/day` : '-'}
+                    </div>
+
+                    <div className="col-span-3">
+                       {f.dailyUsage > 0 ? (
+                         <div className="flex items-center gap-2">
+                            <span className={`text-xl font-black ${f.daysLeft < 3 ? 'text-rose-500' : f.daysLeft < 7 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                               {f.daysLeft.toFixed(0)}
+                            </span>
+                            <span className="text-[10px] font-bold uppercase text-slate-400">Days</span>
+                         </div>
+                       ) : (
+                         <span className="text-xs text-slate-300 font-bold">No Usage Data</span>
+                       )}
+                    </div>
+
+                    <div className="col-span-2 text-right">
+                       <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                           f.status === 'SAFE' ? 'bg-emerald-100 text-emerald-600' :
+                           f.status === 'LOW' ? 'bg-amber-100 text-amber-600' :
+                           'bg-rose-100 text-rose-600'
+                       }`}>
+                           {f.status}
+                       </span>
+                    </div>
+                 </div>
+               ))}
+            </div>
           </div>
         </div>
       </section>

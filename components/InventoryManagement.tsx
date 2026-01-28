@@ -209,12 +209,12 @@ export const InventoryManagement: React.FC = () => {
     <div className="space-y-8 pb-20 animate-in fade-in duration-500">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-slate-200 pb-10">
         <div>
-          <h2 className="text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-4">
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-4">
             <Scale className="text-emerald-500" size={40} /> Raw Material Hub
           </h2>
           <p className="text-slate-500 font-bold mt-2 uppercase text-[11px] tracking-[0.2em]">Cloud Integrated Registry & Smart Cost Control</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <input type="file" id="inv-import" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
           <label htmlFor="inv-import" className={`bg-white border-2 border-slate-200 text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm active:scale-95 group cursor-pointer ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
              {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
@@ -228,7 +228,7 @@ export const InventoryManagement: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-[2.5rem] border-2 border-slate-100 shadow-sm flex flex-col lg:flex-row gap-4">
+      <div className="bg-white p-4 rounded-[2.5rem] border-2 border-slate-100 shadow-sm flex flex-col md:flex-row gap-4">
         <div className="relative flex-1 group">
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={22} />
           <input 
@@ -242,56 +242,58 @@ export const InventoryManagement: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-[3.5rem] border-2 border-slate-100 shadow-sm overflow-hidden">
-        <table className="w-full text-left">
-          <thead className="bg-slate-50/50">
-            <tr>
-              <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Material Identity</th>
-              <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Qty</th>
-              <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Price</th>
-              <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Health</th>
-              <th className="px-10 py-8 text-right"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredItems.map(item => (
-              <tr key={item.id} className="hover:bg-slate-50/80 transition-all group">
-                <td className="px-10 py-8">
-                  <p className="font-black text-slate-900 text-xl tracking-tight mb-1">{item.name}</p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-md">{item.category}</span>
-                    {item.brand && <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1"><Tag size={10} /> {item.brand}</span>}
-                  </div>
-                </td>
-                <td className="px-8 py-8 text-right">
-                  <p className="font-black text-slate-900 text-2xl tracking-tighter">{item.quantity} <span className="text-xs font-medium text-slate-400 uppercase">{item.unit}</span></p>
-                </td>
-                <td className="px-8 py-8 text-right font-black text-slate-900 text-xl">₹{item.lastPrice}</td>
-                <td className="px-8 py-8">
-                   <div className={`px-4 py-2.5 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-3 w-fit ${getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
-                      {getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
-                      {getStatus(item.quantity, item.reorderLevel, item.reserved || 0)}
-                   </div>
-                </td>
-                <td className="px-10 py-8 text-right">
-                   <button onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-emerald-600 rounded-2xl transition-all shadow-sm active:scale-95"><Edit3 size={18} /></button>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left min-w-[800px]">
+            <thead className="bg-slate-50/50">
+              <tr>
+                <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Material Identity</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Qty</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Price</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Health</th>
+                <th className="px-10 py-8 text-right"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredItems.map(item => (
+                <tr key={item.id} className="hover:bg-slate-50/80 transition-all group">
+                  <td className="px-10 py-8">
+                    <p className="font-black text-slate-900 text-xl tracking-tight mb-1">{item.name}</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-md">{item.category}</span>
+                      {item.brand && <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1"><Tag size={10} /> {item.brand}</span>}
+                    </div>
+                  </td>
+                  <td className="px-8 py-8 text-right">
+                    <p className="font-black text-slate-900 text-2xl tracking-tighter">{item.quantity} <span className="text-xs font-medium text-slate-400 uppercase">{item.unit}</span></p>
+                  </td>
+                  <td className="px-8 py-8 text-right font-black text-slate-900 text-xl">₹{item.lastPrice}</td>
+                  <td className="px-8 py-8">
+                     <div className={`px-4 py-2.5 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-3 w-fit ${getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                        {getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? <CheckCircle2 size={14} /> : <AlertTriangle size={14} />}
+                        {getStatus(item.quantity, item.reorderLevel, item.reserved || 0)}
+                     </div>
+                  </td>
+                  <td className="px-10 py-8 text-right">
+                     <button onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-emerald-600 rounded-2xl transition-all shadow-sm active:scale-95"><Edit3 size={18} /></button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
           <div className="bg-white rounded-[4rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[95vh] flex flex-col">
-            <div className="bg-slate-900 p-12 text-white relative">
+            <div className="bg-slate-900 p-8 sm:p-12 text-white relative shrink-0">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-10 right-12 bg-white/10 p-4 rounded-3xl hover:bg-rose-500 transition-all"><X size={24} /></button>
-              <h3 className="text-4xl font-black uppercase tracking-tighter">{editingItem ? 'Update Asset' : 'New Asset'}</h3>
+              <h3 className="text-3xl sm:text-4xl font-black uppercase tracking-tighter">{editingItem ? 'Update Asset' : 'New Asset'}</h3>
               <p className="text-emerald-400 font-black mt-2 text-[10px] uppercase tracking-[0.4em]">Core Supply Chain Interface</p>
             </div>
             
-            <div className="p-12 space-y-8 overflow-y-auto">
-               <div className="grid grid-cols-2 gap-8">
+            <div className="p-8 sm:p-12 space-y-8 overflow-y-auto custom-scrollbar">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Asset Identity</label>
                     <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
@@ -310,7 +312,7 @@ export const InventoryManagement: React.FC = () => {
                     </select>
                   </div>
                </div>
-               <div className="grid grid-cols-2 gap-8">
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Market Price (₹)</label>
                     <input type="number" value={formData.lastPrice} onChange={e => setFormData({...formData, lastPrice: parseFloat(e.target.value) || 0})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-2xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
@@ -329,9 +331,9 @@ export const InventoryManagement: React.FC = () => {
       )}
 
       {isReviewOpen && (
-         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
             <div className="bg-white rounded-[3rem] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 flex flex-col">
-               <div className="bg-slate-900 p-10 text-white flex justify-between items-center shrink-0">
+               <div className="bg-slate-900 p-8 sm:p-10 text-white flex justify-between items-center shrink-0">
                   <div>
                     <h3 className="text-3xl font-black uppercase tracking-tight">Import Review</h3>
                     <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Found {importItems.length} items from document</p>
@@ -339,7 +341,7 @@ export const InventoryManagement: React.FC = () => {
                   <button onClick={() => { setIsReviewOpen(false); setImportItems([]); }} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
                </div>
                
-               <div className="flex-1 overflow-y-auto p-10 custom-scrollbar space-y-4">
+               <div className="flex-1 overflow-y-auto p-8 sm:p-10 custom-scrollbar space-y-4">
                   {importItems.map((item, idx) => (
                      <div key={idx} className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 flex flex-col md:flex-row gap-6 items-start md:items-center group hover:border-emerald-400 transition-colors">
                         <div className="flex-1 space-y-2 w-full">
@@ -349,7 +351,7 @@ export const InventoryManagement: React.FC = () => {
                              className="w-full bg-transparent border-none p-0 text-lg font-black text-slate-900 focus:ring-0 placeholder:text-slate-300"
                              placeholder="Item Name"
                            />
-                           <div className="flex gap-4">
+                           <div className="flex flex-wrap gap-4">
                               <input 
                                 value={item.brand || ''}
                                 onChange={(e) => updateImportItem(idx, 'brand', e.target.value)}
@@ -364,7 +366,7 @@ export const InventoryManagement: React.FC = () => {
                               />
                            </div>
                         </div>
-                        <div className="flex items-center gap-4 w-full md:w-auto">
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
                            <div className="flex items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
                               <input 
                                 type="number" 

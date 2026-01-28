@@ -84,7 +84,7 @@ export const BrandManagement: React.FC = () => {
           </h2>
           <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Master Brand List for Sourcing & Quality Control</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
             <button 
               onClick={populateSamples}
               className="bg-white border-2 border-slate-200 text-slate-600 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:border-emerald-500 hover:text-emerald-600 transition-all shadow-sm active:scale-95"
@@ -113,7 +113,7 @@ export const BrandManagement: React.FC = () => {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {filteredBrands.map(brand => (
           <div key={brand.id} className="bg-white p-8 rounded-[2.5rem] border-2 border-slate-100 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between">
             <div>
@@ -135,9 +135,9 @@ export const BrandManagement: React.FC = () => {
       </div>
 
       {isModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3.5rem] w-full max-w-xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500">
-            <div className="bg-slate-900 p-10 text-white flex justify-between items-center">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-white rounded-[3.5rem] w-full max-w-xl mx-auto overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto">
+            <div className="bg-slate-900 p-10 text-white flex justify-between items-center sticky top-0 z-10">
               <h3 className="text-2xl font-black uppercase tracking-tight">{editingBrand ? 'Edit Brand' : 'Register Brand'}</h3>
               <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/10 rounded-xl transition-all"><X size={24} /></button>
             </div>

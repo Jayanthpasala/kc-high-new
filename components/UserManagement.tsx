@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, updateDoc, doc, query, orderBy, setDoc, deleteDoc } from 'firebase/firestore';
-import { initializeApp, deleteApp } from 'firebase/app';
+import * as firebaseApp from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { UserProfile, UserRole } from '../types';
 import { Users, ShieldCheck, UserCog, Mail, Calendar, Search, Loader2, AlertCircle, Trash2, PlusCircle, X, Key, ShieldPlus } from 'lucide-react';
@@ -76,7 +75,7 @@ export const UserManagement: React.FC = () => {
     };
 
     const secondaryAppName = `ProvisioningApp-${Date.now()}`;
-    const secondaryApp = initializeApp(secondaryConfig, secondaryAppName);
+    const secondaryApp = firebaseApp.initializeApp(secondaryConfig, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
 
     try {
@@ -95,7 +94,7 @@ export const UserManagement: React.FC = () => {
       
       // Cleanup the secondary session to prevent session leak
       await signOut(secondaryAuth);
-      await deleteApp(secondaryApp);
+      await firebaseApp.deleteApp(secondaryApp);
 
       alert(`Staff Provisioned: Credentials for ${newStaffName} active.`);
       setIsProvisionModalOpen(false);
@@ -106,7 +105,7 @@ export const UserManagement: React.FC = () => {
     } catch (err: any) {
       alert(`Provisioning Error: ${err.message}`);
       // Ensure cleanup even on error
-      try { await deleteApp(secondaryApp); } catch {}
+      try { await firebaseApp.deleteApp(secondaryApp); } catch {}
     } finally {
       setIsProvisioning(false);
     }
@@ -151,7 +150,7 @@ export const UserManagement: React.FC = () => {
               <PlusCircle size={20} className="group-hover:rotate-90 transition-transform duration-300" />
               Provision Staff
            </button>
-           <div className="bg-slate-900 px-6 py-3.5 rounded-2xl text-white flex items-center gap-4 shadow-xl">
+           <div className="hidden sm:flex bg-slate-900 px-6 py-3.5 rounded-2xl text-white items-center gap-4 shadow-xl">
               <div className="flex -space-x-3">
                 {users.filter(u => u.role === 'owner').map((o, idx) => (
                     <div key={idx} className="w-8 h-8 rounded-full border-2 border-slate-900 bg-emerald-500 flex items-center justify-center text-[10px] font-black uppercase shadow-sm">
@@ -187,80 +186,82 @@ export const UserManagement: React.FC = () => {
              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Syncing Identity Registry...</p>
           </div>
         ) : (
-          <table className="w-full text-left">
-            <thead className="bg-slate-50/50">
-              <tr>
-                <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Staff Identity</th>
-                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined On</th>
-                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Authorization Level</th>
-                <th className="px-10 py-8 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filteredUsers.map((user) => (
-                <tr key={user.uid} className="hover:bg-slate-50/80 transition-all group">
-                  <td className="px-10 py-8">
-                     <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${user.role === 'owner' ? 'bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20' : 'bg-slate-100 text-slate-400'}`}>
-                           {user.email[0].toUpperCase()}
-                        </div>
-                        <div>
-                           <p className="font-black text-slate-900 text-lg leading-none mb-1">{user.displayName || 'Unnamed Staff'}</p>
-                           <p className="text-xs font-bold text-slate-400 flex items-center gap-1.5"><Mail size={12} /> {user.email}</p>
-                        </div>
-                     </div>
-                  </td>
-                  <td className="px-8 py-8">
-                     <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
-                        <Calendar size={14} />
-                        {new Date(user.createdAt).toLocaleDateString()}
-                     </div>
-                  </td>
-                  <td className="px-8 py-8">
-                     <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 ${
-                        user.role === 'owner' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'
-                     }`}>
-                        {user.role === 'owner' ? <ShieldCheck size={14} /> : <Users size={14} />}
-                        {user.role}
-                     </div>
-                  </td>
-                  <td className="px-10 py-8 text-right">
-                     <div className="flex justify-end gap-2">
-                        {user.email !== 'jayanthpasala10@gmail.com' && (
-                          <>
-                            <button 
-                              onClick={() => handleToggleRole(user)}
-                              className="bg-white border-2 border-slate-100 p-3 rounded-xl text-slate-400 hover:text-emerald-600 hover:border-emerald-500 transition-all active:scale-90"
-                              title={user.role === 'owner' ? "Demote to Staff" : "Promote to Owner"}
-                            >
-                              <UserCog size={18} />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteUser(user)}
-                              className="bg-white border-2 border-slate-100 p-3 rounded-xl text-slate-400 hover:text-rose-500 hover:border-rose-500 transition-all active:scale-90"
-                              title="Revoke Access"
-                            >
-                              <Trash2 size={18} />
-                            </button>
-                          </>
-                        )}
-                        {user.email === 'jayanthpasala10@gmail.com' && (
-                          <div className="p-3 text-emerald-500 font-black text-[9px] uppercase tracking-widest">Root Account</div>
-                        )}
-                     </div>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[800px]">
+              <thead className="bg-slate-50/50">
+                <tr>
+                  <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Staff Identity</th>
+                  <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Joined On</th>
+                  <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Authorization Level</th>
+                  <th className="px-10 py-8 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredUsers.map((user) => (
+                  <tr key={user.uid} className="hover:bg-slate-50/80 transition-all group">
+                    <td className="px-10 py-8">
+                      <div className="flex items-center gap-4">
+                          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-lg ${user.role === 'owner' ? 'bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20' : 'bg-slate-100 text-slate-400'}`}>
+                            {user.email[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="font-black text-slate-900 text-lg leading-none mb-1">{user.displayName || 'Unnamed Staff'}</p>
+                            <p className="text-xs font-bold text-slate-400 flex items-center gap-1.5"><Mail size={12} /> {user.email}</p>
+                          </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-8">
+                      <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
+                          <Calendar size={14} />
+                          {new Date(user.createdAt).toLocaleDateString()}
+                      </div>
+                    </td>
+                    <td className="px-8 py-8">
+                      <div className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 ${
+                          user.role === 'owner' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-50 text-slate-500 border-slate-100'
+                      }`}>
+                          {user.role === 'owner' ? <ShieldCheck size={14} /> : <Users size={14} />}
+                          {user.role}
+                      </div>
+                    </td>
+                    <td className="px-10 py-8 text-right">
+                      <div className="flex justify-end gap-2">
+                          {user.email !== 'jayanthpasala10@gmail.com' && (
+                            <>
+                              <button 
+                                onClick={() => handleToggleRole(user)}
+                                className="bg-white border-2 border-slate-100 p-3 rounded-xl text-slate-400 hover:text-emerald-600 hover:border-emerald-500 transition-all active:scale-90"
+                                title={user.role === 'owner' ? "Demote to Staff" : "Promote to Owner"}
+                              >
+                                <UserCog size={18} />
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteUser(user)}
+                                className="bg-white border-2 border-slate-100 p-3 rounded-xl text-slate-400 hover:text-rose-500 hover:border-rose-500 transition-all active:scale-90"
+                                title="Revoke Access"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </>
+                          )}
+                          {user.email === 'jayanthpasala10@gmail.com' && (
+                            <div className="p-3 text-emerald-500 font-black text-[9px] uppercase tracking-widest">Root Account</div>
+                          )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       {/* Provisioning Modal */}
       {isProvisionModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
-           <div className="bg-white rounded-[3.5rem] w-full max-w-xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500">
-              <div className="bg-slate-900 p-10 text-white relative">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+           <div className="bg-white rounded-[3.5rem] w-full max-w-xl mx-auto overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto">
+              <div className="bg-slate-900 p-10 text-white relative sticky top-0 z-10">
                  <button 
                    onClick={() => setIsProvisionModalOpen(false)} 
                    className="absolute top-10 right-10 bg-white/10 p-4 rounded-2xl hover:bg-rose-500 transition-all"

@@ -52,8 +52,8 @@ export const PendingRecipes: React.FC = () => {
         >
           <X size={16} /> Cancel Completion
         </button>
-        <div className="bg-emerald-50 p-10 rounded-[2.5rem] border border-emerald-100 mb-8 flex items-center gap-6">
-            <div className="w-16 h-16 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+        <div className="bg-emerald-50 p-10 rounded-[2.5rem] border border-emerald-100 mb-8 flex flex-col sm:flex-row items-center gap-6">
+            <div className="w-16 h-16 bg-emerald-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/20 shrink-0">
               <ChefHat size={32} />
             </div>
             <div>
@@ -98,7 +98,7 @@ export const PendingRecipes: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredDishes.map((dish, idx) => (
           <div key={idx} className="bg-white rounded-[2.5rem] border border-slate-200 p-8 shadow-sm hover:shadow-2xl hover:-translate-y-1 transition-all group flex flex-col h-full border-t-4 border-t-amber-400">
             <div className="flex justify-between items-start mb-6">
@@ -110,10 +110,10 @@ export const PendingRecipes: React.FC = () => {
             
             <h3 className="text-xl font-bold text-slate-900 mb-6 leading-tight flex-1">{dish}</h3>
             
-            <div className="mt-auto pt-8 border-t border-slate-100 flex justify-between items-center gap-4">
+            <div className="mt-auto pt-8 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
               <button 
                 onClick={() => setCompletingDish(dish)}
-                className="flex-1 bg-slate-900 text-white px-6 py-3.5 rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/10"
+                className="w-full sm:flex-1 bg-slate-900 text-white px-6 py-3.5 rounded-xl font-bold text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-lg shadow-slate-900/10"
               >
                 Create Recipe <ArrowRight size={14} />
               </button>

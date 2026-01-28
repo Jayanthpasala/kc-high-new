@@ -41,7 +41,7 @@ export const POTemplateSettings: React.FC = () => {
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-end border-b border-slate-200 pb-8">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
              <FileText className="text-emerald-500" size={32} />
@@ -61,7 +61,7 @@ export const POTemplateSettings: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
         {/* Configuration Column */}
         <div className="lg:col-span-2 space-y-8">
-           <div className="bg-white p-10 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
+           <div className="bg-white p-8 sm:p-10 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  <div className="space-y-3 col-span-full">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Entity Registered Name</label>

@@ -230,7 +230,7 @@ export const VendorManagement: React.FC = () => {
           </h2>
           <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest font-black">Regional Logistics & Comparative Cost Analysis</p>
         </div>
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-4">
           <button 
             onClick={() => setIsAnalysisOpen(true)}
             className="bg-white border-2 border-slate-200 text-slate-700 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm active:scale-95 group"
@@ -261,13 +261,13 @@ export const VendorManagement: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
         {filteredVendors.map(vendor => (
           <div key={vendor.id} className="bg-white rounded-[3rem] border-2 border-slate-100 overflow-hidden shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col">
             <div className="p-8 flex-1">
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
                 <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center shadow-lg">
+                  <div className="w-16 h-16 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center shadow-lg shrink-0">
                     <Building2 size={28} />
                   </div>
                   <div>
@@ -283,7 +283,7 @@ export const VendorManagement: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 self-end sm:self-start">
                   <button onClick={() => handleOpenEdit(vendor)} className="p-3 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"><Edit3 size={18} /></button>
                   <button onClick={() => handleDelete(vendor.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
                 </div>
@@ -332,20 +332,20 @@ export const VendorManagement: React.FC = () => {
 
       {/* MARKET ANALYSIS MODAL */}
       {isAnalysisOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
           <div className="bg-white rounded-[3.5rem] w-full max-w-6xl h-[90vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col animate-in zoom-in-95 duration-500">
-             <div className="bg-slate-900 p-10 text-white shrink-0 flex justify-between items-start">
+             <div className="bg-slate-900 p-8 sm:p-10 text-white shrink-0 flex justify-between items-start">
                <div>
                  <div className="flex items-center gap-3 mb-2">
                    <div className="bg-blue-500 p-2 rounded-xl text-white"><BarChart3 size={24} /></div>
-                   <h3 className="text-3xl font-black tracking-tight">Market Intelligence</h3>
+                   <h3 className="text-2xl sm:text-3xl font-black tracking-tight">Market Intelligence</h3>
                  </div>
                  <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] ml-1">Cross-Vendor Price Arbitrage</p>
                </div>
                <button onClick={() => setIsAnalysisOpen(false)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
              </div>
 
-             <div className="flex-1 overflow-y-auto p-10 custom-scrollbar bg-slate-50">
+             <div className="flex-1 overflow-y-auto p-8 sm:p-10 custom-scrollbar bg-slate-50">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                    {marketData.map((data, idx) => (
                      <div key={idx} className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
@@ -379,10 +379,10 @@ export const VendorManagement: React.FC = () => {
 
       {/* Modern Vendor Studio Modal */}
       {isModalOpen && editingVendor && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3.5rem] w-full max-w-7xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex animate-in zoom-in-95 duration-500">
-            <div className="w-80 bg-slate-900 p-10 flex flex-col shrink-0">
-               <div className="mb-12">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="bg-white rounded-[3.5rem] w-full max-w-7xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col lg:flex-row animate-in zoom-in-95 duration-500">
+            <div className="w-full lg:w-80 bg-slate-900 p-8 sm:p-10 flex flex-col shrink-0 overflow-y-auto max-h-[30vh] lg:max-h-full">
+               <div className="mb-8 lg:mb-12">
                   <div className="w-16 h-16 bg-emerald-500 text-slate-950 rounded-[1.5rem] flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/20">
                      <Building2 size={32} />
                   </div>
@@ -426,21 +426,21 @@ export const VendorManagement: React.FC = () => {
             </div>
 
             <div className="flex-1 flex flex-col bg-white overflow-hidden">
-               <header className="p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/20 shrink-0">
-                  <h4 className="text-4xl font-black text-slate-900 tracking-tight">{editingVendor.name || 'Vendor Registry'}</h4>
+               <header className="p-8 sm:p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/20 shrink-0">
+                  <h4 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">{editingVendor.name || 'Vendor Registry'}</h4>
                   <button onClick={() => setIsModalOpen(false)} className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl shadow-sm"><X size={24} /></button>
                </header>
 
-               <div className="flex-1 overflow-y-auto p-12 custom-scrollbar">
+               <div className="flex-1 overflow-y-auto p-8 sm:p-12 custom-scrollbar">
                   {/* (Identity, Pricing, Supply, Financial tabs remain same as original file, omitted for brevity but preserved in output) */}
                   {activeTab === 'identity' && (
                     <div className="space-y-12 animate-in fade-in duration-500">
-                       <div className="grid grid-cols-12 gap-10">
-                          <div className="col-span-7 space-y-2">
+                       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
+                          <div className="lg:col-span-7 space-y-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Legal Trade Name</label>
                              <input type="text" value={editingVendor.name} onChange={e => setEditingVendor({...editingVendor, name: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-slate-900 text-xl outline-none focus:border-emerald-500 transition-all shadow-inner" />
                           </div>
-                          <div className="col-span-5 space-y-2">
+                          <div className="lg:col-span-5 space-y-2">
                              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Lead</label>
                              <input type="text" value={editingVendor.contact} onChange={e => setEditingVendor({...editingVendor, contact: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 text-lg outline-none focus:border-emerald-500 transition-all shadow-inner" />
                           </div>
@@ -454,7 +454,7 @@ export const VendorManagement: React.FC = () => {
                           {editingVendor.suppliedItems?.map(item => {
                             const point = editingVendor.priceLedger?.find(p => p.itemName === item);
                             return (
-                              <div key={item} className="p-8 bg-white border-2 border-slate-100 rounded-[2rem] flex items-center justify-between group hover:border-emerald-500 transition-all">
+                              <div key={item} className="p-6 sm:p-8 bg-white border-2 border-slate-100 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between group hover:border-emerald-500 transition-all gap-4">
                                  <h6 className="font-black text-lg text-slate-900">{item}</h6>
                                  <div className="flex items-center gap-4">
                                     <input 
@@ -502,7 +502,7 @@ export const VendorManagement: React.FC = () => {
 
                   {activeTab === 'performance' && editingVendor.id && (
                      <div className="space-y-8 animate-in fade-in duration-500">
-                        <div className="grid grid-cols-2 gap-8">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                            <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
                               <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Total Spend</p>
                               <p className="text-4xl font-black tracking-tighter">₹{(getVendorStats(editingVendor.id!).totalSpend / 1000).toFixed(1)}k</p>

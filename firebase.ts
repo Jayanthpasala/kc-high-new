@@ -1,4 +1,4 @@
-import { initializeApp, getApps, getApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { 
   getAuth, 
   setPersistence, 
@@ -17,7 +17,8 @@ const firebaseConfig = {
 };
 
 // Ensure Firebase initializes only once
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Use namespace import to avoid "no exported member" errors if named imports fail
+const app = firebaseApp.getApps().length === 0 ? firebaseApp.initializeApp(firebaseConfig) : firebaseApp.getApp();
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
@@ -32,4 +33,3 @@ setPersistence(auth, browserLocalPersistence)
   });
 
 export default app;
-

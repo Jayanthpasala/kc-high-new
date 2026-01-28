@@ -262,9 +262,9 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
         {filteredRecipes.map(recipe => (
-          <div key={recipe.id} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col h-full relative">
+          <div key={recipe.id} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col h-full relative min-h-[420px]">
             <div className="flex justify-between items-start mb-6">
               <div className="bg-slate-50 p-4 rounded-2xl text-slate-900 border border-slate-100 group-hover:bg-emerald-50 group-hover:text-emerald-600 transition-colors">
                 <ChefHat size={28} />
@@ -307,19 +307,19 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/70 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="bg-white rounded-[3rem] w-full max-w-[95vw] 2xl:max-w-[1600px] overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[95vh] flex flex-col">
-            <div className="bg-slate-900 p-8 md:px-12 md:py-8 text-white relative shrink-0 flex items-center justify-between border-b border-white/10">
+            <div className="bg-slate-900 p-6 md:px-12 md:py-8 text-white relative shrink-0 flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-white/10 gap-4">
               <div className="flex items-center gap-5">
-                <div className="bg-emerald-500 text-slate-950 p-3 rounded-2xl shadow-lg shadow-emerald-500/20">
+                <div className="bg-emerald-500 text-slate-950 p-3 rounded-2xl shadow-lg shadow-emerald-500/20 hidden sm:block">
                   <ChefHat size={28} />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 text-emerald-400 mb-0.5">
                     <span className="text-[10px] font-black uppercase tracking-[0.3em]">Kitchen OS BOM Studio</span>
                   </div>
-                  <h3 className="text-3xl font-black tracking-tight">{formData.name || 'Recipe Specification'}</h3>
+                  <h3 className="text-2xl sm:text-3xl font-black tracking-tight">{formData.name || 'Recipe Specification'}</h3>
                 </div>
               </div>
-              <button onClick={() => setIsModalOpen(false)} className="bg-white/5 hover:bg-rose-500 p-3 rounded-xl transition-all"><X size={24} /></button>
+              <button onClick={() => setIsModalOpen(false)} className="bg-white/5 hover:bg-rose-500 p-3 rounded-xl transition-all absolute top-6 right-6 sm:static"><X size={24} /></button>
             </div>
             
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 space-y-10">
@@ -361,14 +361,14 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                             <div className="shrink-0">
                               {ing.inventoryItemId ? <CheckCircle2 size={18} className="text-emerald-500" /> : <AlertCircle size={18} className="text-amber-400" />}
                             </div>
-                            <div className="flex-1 grid grid-cols-2 gap-4">
+                            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <input type="text" placeholder="Ingredient Name" value={ing.name} onChange={(e) => updateIngredient(idx, 'name', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-900 placeholder:text-slate-300 focus:ring-0 p-0 text-sm" readOnly={!!ing.inventoryItemId} />
                               <div className="flex items-center gap-1.5 text-slate-400 font-bold text-xs">
                                 <Tag size={12} />
                                 <input type="text" placeholder="Brand Preference" value={ing.brand} onChange={(e) => updateIngredient(idx, 'brand', e.target.value)} className="w-full bg-transparent border-none font-bold text-slate-700 placeholder:text-slate-200 focus:ring-0 p-0 text-xs" readOnly={!!ing.inventoryItemId} />
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover/ing:opacity-100 transition-all">
+                            <div className="flex items-center gap-1 opacity-100 lg:opacity-0 group-hover/ing:opacity-100 transition-all">
                                {ing.inventoryItemId ? (
                                  <button onClick={() => unlinkInventoryItem(idx)} className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg"><Link2Off size={14} /></button>
                                ) : (
@@ -444,7 +444,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                             <span className="w-8 h-8 bg-slate-900 text-white rounded-lg flex items-center justify-center font-black text-xs">{idx + 1}</span>
                          </div>
                          <textarea value={inst} onChange={(e) => updateInstruction(idx, e.target.value)} placeholder="Provide specific cooking instructions..." className="flex-1 bg-transparent border-none focus:ring-0 text-slate-700 font-semibold text-sm leading-relaxed resize-none h-20 p-0 placeholder:text-slate-200" />
-                         <button onClick={() => removeInstruction(idx)} className="self-start p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover/inst:opacity-100 transition-all"><Trash2 size={16} /></button>
+                         <button onClick={() => removeInstruction(idx)} className="self-start p-2 text-slate-200 hover:text-rose-500 opacity-100 lg:opacity-0 group-hover/inst:opacity-100 transition-all"><Trash2 size={16} /></button>
                       </div>
                     ))}
                   </div>
@@ -452,7 +452,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
               </div>
             </div>
 
-            <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex justify-end gap-4 shrink-0">
+            <div className="p-8 bg-slate-50 border-t-2 border-slate-100 flex flex-col sm:flex-row justify-end gap-4 shrink-0">
                <button onClick={() => setIsModalOpen(false)} className="px-8 py-4 text-slate-400 hover:text-rose-500 font-black uppercase tracking-widest text-[10px] transition-all">Discard Changes</button>
                <button onClick={handleSave} className="bg-slate-900 text-white px-12 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] shadow-2xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-3 active:scale-95">
                   <Save size={16} /> Archive Specification
