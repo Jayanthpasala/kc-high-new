@@ -22,7 +22,7 @@ import {
   Save,
   FileText
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { ProductionPlan, Recipe, InventoryItem, InventoryReservation, Meal } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
@@ -278,17 +278,41 @@ export const ProductionPlanning: React.FC = () => {
       
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: [
           {
             parts: [
               { inlineData: { data: base64, mimeType: file.type } },
-              { text: `Extract kitchen menu. The current year is ${currentYear}. Return dates strictly in YYYY-MM-DD format. Output JSON array: [{date: "YYYY-MM-DD", meals: [{mealType: string, dishes: string[]}]}]` }
+              { text: `Extract kitchen menu. The current year is ${currentYear}. Return dates strictly in YYYY-MM-DD format.` }
             ]
           }
         ],
         config: {
-            responseMimeType: "application/json"
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  date: { type: Type.STRING, description: "Date in YYYY-MM-DD format" },
+                  meals: {
+                    type: Type.ARRAY,
+                    items: {
+                      type: Type.OBJECT,
+                      properties: {
+                        mealType: { type: Type.STRING, description: "e.g. Breakfast, Lunch, Dinner" },
+                        dishes: { 
+                          type: Type.ARRAY,
+                          items: { type: Type.STRING }
+                        }
+                      },
+                      required: ["mealType", "dishes"]
+                    }
+                  }
+                },
+                required: ["date", "meals"]
+              }
+            }
         }
       });
       
