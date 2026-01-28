@@ -270,6 +270,14 @@ export const ProductionPlanning: React.FC = () => {
     if (!file) return;
     setIsProcessing(true);
     try {
+      // Ensure API Key is available via user selection
+      if ((window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+            await (window as any).aistudio.openSelectKey();
+        }
+      }
+
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
         reader.readAsDataURL(file);

@@ -83,6 +83,14 @@ export const InventoryManagement: React.FC = () => {
 
     setIsProcessing(true);
     try {
+      // Ensure API Key is available
+      if ((window as any).aistudio) {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+            await (window as any).aistudio.openSelectKey();
+        }
+      }
+
       let prompt = `Extract inventory items from this file. Return a JSON array of objects with these properties:
       - name (string): Item name
       - quantity (number): Current stock amount
