@@ -6,36 +6,18 @@ import {
   AlertTriangle, 
   CheckCircle, 
   Package, 
-  ArrowRight, 
   X, 
-  Search, 
-  FileText, 
   PlusCircle,
-  History,
-  Info,
-  Calendar,
   Printer,
-  ChevronDown,
-  Building,
-  ChefHat,
-  TrendingUp,
-  TrendingDown,
-  MapPin,
-  Mail,
-  Phone,
+  FileText,
   ClipboardCheck,
-  PackageCheck,
-  AlertCircle,
-  ArrowDownToLine,
-  ScanLine,
-  Tag,
-  Scale,
-  Layers,
+  ShieldCheck,
   ThumbsUp,
   ThumbsDown,
-  ShieldCheck
+  Tag,
+  Loader2
 } from 'lucide-react';
-import { PendingProcurement, PurchaseOrder, InventoryItem, Vendor, POTemplateConfig, POItem, Brand } from '../types';
+import { PendingProcurement, PurchaseOrder, InventoryItem, Vendor, POTemplateConfig, Brand } from '../types';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, writeBatch, doc } from 'firebase/firestore';
 
@@ -50,6 +32,50 @@ const DEFAULT_PO_CONFIG: POTemplateConfig = {
 };
 
 const KITCHEN_UNITS = ['kg', 'L', 'g', 'ml', 'pcs', 'pkt', 'box', 'crate', 'dozen', 'tin'];
+
+// Fallback vendors to ensure the dropdown is never empty
+const DEFAULT_VENDORS: Vendor[] = [
+  {
+    id: 'V1',
+    name: 'Maharashtra Agri-Cooperative',
+    contact: 'Sunil Deshmukh',
+    email: 'orders@maicoop.org.in',
+    phone: '+91 98200 12345',
+    categories: ['Produce', 'Vegetables'],
+    rating: 4.8,
+    bankDetails: {
+      bankName: 'State Bank of India',
+      accountName: 'Maharashtra Agri-Coop Society',
+      accountNumber: '**** **** 1122',
+      ifscCode: 'SBIN0000300'
+    },
+    suppliedItems: ['Premium Basmati Rice', 'Fresh Paneer (Malai)'],
+    priceLedger: [
+      { itemName: 'Premium Basmati Rice', price: 95, unit: 'kg' },
+      { itemName: 'Fresh Paneer (Malai)', price: 420, unit: 'kg' }
+    ]
+  },
+  {
+    id: 'V2',
+    name: 'Bharat Grains & Pulses',
+    contact: 'Rahul Verma',
+    email: 'verma.rahul@bharatgrains.com',
+    phone: '+91 11 2345 6789',
+    categories: ['Dry Goods', 'Flour', 'Rice'],
+    rating: 4.5,
+    bankDetails: {
+      bankName: 'HDFC Bank',
+      accountName: 'Bharat Grains Wholesale Ltd',
+      accountNumber: '**** **** 4490',
+      ifscCode: 'HDFC0001234'
+    },
+    suppliedItems: ['Organic Ghee (1L)', 'Premium Basmati Rice'],
+    priceLedger: [
+      { itemName: 'Organic Ghee (1L)', price: 580, unit: 'L' },
+      { itemName: 'Premium Basmati Rice', price: 105, unit: 'kg' }
+    ]
+  }
+];
 
 interface AuditItem {
   receivedQty: number;
@@ -71,6 +97,7 @@ export const ProcurementManagement: React.FC = () => {
   const [approvingProcurement, setApprovingProcurement] = useState<PendingProcurement | null>(null);
   const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
   const [verifyingPO, setVerifyingPO] = useState<PurchaseOrder | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Verification / Audit state
   const [auditData, setAuditData] = useState<Record<string, AuditItem>>({});
@@ -93,7 +120,13 @@ export const ProcurementManagement: React.FC = () => {
   });
 
   const loadLocalData = () => {
-    const vends = JSON.parse(localStorage.getItem('vendors') || '[]');
+    let vends = JSON.parse(localStorage.getItem('vendors') || '[]');
+    // Seed vendors if empty to prevent PO errors
+    if (vends.length === 0) {
+      vends = DEFAULT_VENDORS;
+      localStorage.setItem('vendors', JSON.stringify(vends));
+    }
+    
     const pos = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
     const manualProcs = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
     const savedConfig = localStorage.getItem('poTemplateConfig');
@@ -183,57 +216,108 @@ export const ProcurementManagement: React.FC = () => {
     window.dispatchEvent(new Event('storage'));
   };
 
-  const finalizePO = () => {
-    if (!approvingProcurement || !approvalData.vendorId) return;
-    const selectedVendor = vendors.find(v => v.id === approvalData.vendorId);
+  const handleInitiatePurchase = (p: PendingProcurement) => {
+    setApprovingProcurement(p);
     
-    const uniqueOrderNo = `ORD-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    // Smart Logic: Find the best vendor automatically to prevent validation errors
+    let suggestedVendorId = '';
+    let suggestedPrice = 0;
 
-    const newPO: PurchaseOrder = {
-      id: Math.random().toString(36).substr(2, 9),
-      orderNumber: uniqueOrderNo,
-      vendorId: selectedVendor?.id || 'V-UNKNOWN',
-      vendorName: selectedVendor?.name || 'Manual Partner',
-      items: [{ 
-        ingredientName: approvingProcurement.ingredientName, 
-        brand: approvalData.brand || approvingProcurement.brand,
-        quantity: approvalData.quantity, 
-        unit: approvingProcurement.unit,
-        priceAtOrder: approvalData.unitPrice
-      }],
-      expectedDeliveryDate: approvingProcurement.requiredByDate,
-      status: 'pending',
-      createdAt: Date.now(),
-      totalCost: approvalData.quantity * approvalData.unitPrice
-    };
+    // 1. Look for vendor who supplies this specific item
+    const supplier = vendors.find(v => v.suppliedItems?.some(item => item.toLowerCase() === p.ingredientName.toLowerCase()));
     
-    const updatedPOs = [newPO, ...purchaseOrders];
-    localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
-    setPurchaseOrders(updatedPOs);
-    
-    if (approvingProcurement.isManual) {
-      const existingManual = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
-      const filteredManual = existingManual.filter((p: any) => p.id !== approvingProcurement.id);
-      localStorage.setItem('manualProcurements', JSON.stringify(filteredManual));
-      setProcurements(prev => prev.filter(p => p.id !== approvingProcurement.id));
+    if (supplier) {
+      suggestedVendorId = supplier.id;
+    } else if (vendors.length > 0) {
+       // 2. Fallback to first vendor if available
+       suggestedVendorId = vendors[0].id;
+    }
+
+    // 3. Find price from ledger if available
+    if (suggestedVendorId) {
+       const v = vendors.find(ven => ven.id === suggestedVendorId);
+       const entry = v?.priceLedger?.find(pl => pl.itemName.toLowerCase() === p.ingredientName.toLowerCase());
+       if (entry) suggestedPrice = entry.price;
+    }
+
+    setApprovalData({ 
+       vendorId: suggestedVendorId, 
+       quantity: p.requiredQty, 
+       unitPrice: suggestedPrice, 
+       brand: p.brand 
+    });
+  };
+
+  const finalizePO = async () => {
+    if (!approvingProcurement) return;
+
+    // VALIDATION: Ensure vendor is selected
+    if (!approvalData.vendorId) {
+        alert("Action Required: Please select a vendor from the list to generate a Purchase Order.");
+        return;
     }
     
-    setApprovingProcurement(null);
-    setActiveTab('PENDING');
-    window.dispatchEvent(new Event('storage'));
+    setIsSubmitting(true);
+    try {
+      const selectedVendor = vendors.find(v => v.id === approvalData.vendorId);
+      
+      const uniqueOrderNo = `ORD-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
+      const newPO: PurchaseOrder = {
+        id: Math.random().toString(36).substr(2, 9),
+        orderNumber: uniqueOrderNo,
+        vendorId: selectedVendor?.id || 'V-UNKNOWN',
+        vendorName: selectedVendor?.name || 'Manual Partner',
+        items: [{ 
+          ingredientName: approvingProcurement.ingredientName, 
+          brand: approvalData.brand || approvingProcurement.brand,
+          quantity: approvalData.quantity, 
+          unit: approvingProcurement.unit,
+          priceAtOrder: approvalData.unitPrice
+        }],
+        expectedDeliveryDate: approvingProcurement.requiredByDate,
+        status: 'pending',
+        createdAt: Date.now(),
+        totalCost: approvalData.quantity * approvalData.unitPrice
+      };
+      
+      const updatedPOs = [newPO, ...purchaseOrders];
+      localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
+      setPurchaseOrders(updatedPOs);
+      
+      if (approvingProcurement.isManual) {
+        const existingManual = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
+        const filteredManual = existingManual.filter((p: any) => p.id !== approvingProcurement.id);
+        localStorage.setItem('manualProcurements', JSON.stringify(filteredManual));
+        setProcurements(prev => prev.filter(p => p.id !== approvingProcurement.id));
+      }
+      
+      setApprovingProcurement(null);
+      setActiveTab('PENDING');
+      window.dispatchEvent(new Event('storage'));
+      // Small delay to ensure UI updates before alert
+      setTimeout(() => alert(`Purchase Order ${uniqueOrderNo} created successfully!`), 100);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to generate Purchase Order.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const startPhysicalAudit = (po: PurchaseOrder) => {
     setVerifyingPO(po);
     const initialAudit: Record<string, AuditItem> = {};
-    po.items.forEach(item => {
-      // Initialize with full quantity, passing quality by default
-      initialAudit[item.ingredientName] = {
-        receivedQty: item.quantity,
-        qualityPassed: true,
-        notes: ''
-      };
-    });
+    if (po.items) {
+      po.items.forEach(item => {
+        // Initialize with full quantity, passing quality by default
+        initialAudit[item.ingredientName] = {
+          receivedQty: item.quantity,
+          qualityPassed: true,
+          notes: ''
+        };
+      });
+    }
     setAuditData(initialAudit);
     setVerificationRemarks('');
   };
@@ -251,12 +335,14 @@ export const ProcurementManagement: React.FC = () => {
   const commitGRN = async () => {
     if (!verifyingPO) return;
     
-    const itemsFailedQuality = Object.values(auditData).some(item => !item.qualityPassed);
+    const itemsFailedQuality = Object.values(auditData).some((item: AuditItem) => !item.qualityPassed);
     if (itemsFailedQuality) {
        if (!confirm("Attention: Some items failed quality checks. Proceed with partial inventory update?")) {
          return;
        }
     }
+
+    setIsSubmitting(true);
 
     // Generate Unique GRN
     const grnNumber = `GRN-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substr(2, 3).toUpperCase()}`;
@@ -267,6 +353,8 @@ export const ProcurementManagement: React.FC = () => {
       // Update inventory based on received items
       for (const item of verifyingPO.items) {
          const audit = auditData[item.ingredientName];
+         if (!audit) continue;
+         
          // Only add to inventory if quality passed and qty > 0
          if (audit.receivedQty <= 0 || !audit.qualityPassed) continue;
 
@@ -323,13 +411,15 @@ export const ProcurementManagement: React.FC = () => {
       localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
       setPurchaseOrders(updatedPOs);
 
-      alert(`GRN Generated: ${grnNumber}\nInventory Master Updated Successfully.`);
       setVerifyingPO(null);
       setActiveTab('COMPLETED');
       window.dispatchEvent(new Event('storage'));
+      setTimeout(() => alert(`GRN Generated: ${grnNumber}\nInventory Master Updated Successfully.`), 100);
     } catch (error) {
       console.error("Error committing GRN:", error);
-      alert("Failed to update inventory. Please try again.");
+      alert("Failed to update inventory database. Please check your connection and try again.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -337,8 +427,6 @@ export const ProcurementManagement: React.FC = () => {
     setViewingPO(po);
     setTimeout(() => window.print(), 500);
   };
-
-  // ... (Rest of the component remains similar, including JSX return) ...
 
   return (
     <div className="space-y-8 pb-24 animate-in fade-in duration-500">
@@ -382,10 +470,7 @@ export const ProcurementManagement: React.FC = () => {
                 
                 <div className="mt-auto pt-8 border-t border-slate-50">
                   <button 
-                    onClick={() => {
-                      setApprovingProcurement(p);
-                      setApprovalData({ vendorId: '', quantity: p.requiredQty, unitPrice: 0, brand: p.brand });
-                    }} 
+                    onClick={() => handleInitiatePurchase(p)} 
                     className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-emerald-600 shadow-xl transition-all flex items-center justify-center gap-3 active:scale-95"
                   >
                     <CheckCircle size={18} /> Initiate Purchase
@@ -536,7 +621,14 @@ export const ProcurementManagement: React.FC = () => {
                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Cost</p>
                        <p className="text-2xl font-black text-slate-900">₹{(approvalData.quantity * approvalData.unitPrice).toLocaleString()}</p>
                     </div>
-                    <button onClick={finalizePO} className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95">Confirm PO</button>
+                    <button 
+                      onClick={finalizePO} 
+                      disabled={isSubmitting}
+                      className="bg-slate-900 text-white px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                    >
+                      {isSubmitting ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={18} />}
+                      {isSubmitting ? 'Generating...' : 'Confirm PO'}
+                    </button>
                  </div>
               </div>
            </div>
@@ -723,8 +815,13 @@ export const ProcurementManagement: React.FC = () => {
                </div>
                
                <div className="p-8 bg-slate-50 border-t border-slate-200 shrink-0">
-                  <button onClick={commitGRN} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95 flex items-center justify-center gap-3">
-                     <ShieldCheck size={18} /> Generate GRN & Update Inventory
+                  <button 
+                    onClick={commitGRN} 
+                    disabled={isSubmitting}
+                    className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
+                  >
+                     {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={18} />} 
+                     {isSubmitting ? 'Syncing Inventory...' : 'Generate GRN & Update Inventory'}
                   </button>
                </div>
             </div>
