@@ -31,7 +31,7 @@
       window.process = window.process || {};
       window.process.env = window.process.env || {};
       
-      // Update with the specific API Key provided by the user
+      // Explicitly set the API Key from the provided credentials
       window.process.env.API_KEY = "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA";
 
       window.addEventListener('error', (e) => {
@@ -52,7 +52,7 @@
       });
     </script>
 
-    <!-- Unified dependency management: Single source of truth from importmap.json -->
+    <!-- Use single consolidated importmap from importmap.json -->
     <script type="importmap" src="./importmap.json"></script>
 <script type="importmap">
 {

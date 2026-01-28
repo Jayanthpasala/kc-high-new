@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Search, Bell, UserCircle, Menu, LogOut } from 'lucide-react';
+import { Search, Bell, Menu, LogOut } from 'lucide-react';
 import { NAV_ITEMS } from '../constants';
 import { PageId } from '../types';
 import { auth } from '../firebase';
@@ -14,15 +13,10 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, onMenuClick }) => {
   const currentPage = NAV_ITEMS.find(item => item.id === activePage);
-  const user = auth.currentUser || (localStorage.getItem('kms_demo_mode') === 'true' ? { displayName: 'Demo Chef', email: 'demo@local' } : null);
+  const user = auth.currentUser;
 
   const handleLogout = async () => {
-      if (localStorage.getItem('kms_demo_mode') === 'true') {
-          localStorage.removeItem('kms_demo_mode');
-          window.location.reload();
-      } else {
-          await signOut(auth);
-      }
+    await signOut(auth);
   };
 
   return (
@@ -32,7 +26,6 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
       } left-0`}
     >
       <div className="flex items-center space-x-3 md:space-x-4">
-        {/* Hamburger Menu Toggle (Mobile Only) */}
         <button 
           onClick={onMenuClick}
           className="lg:hidden p-2 -ml-2 text-slate-500 hover:text-emerald-600 transition-colors"
@@ -43,7 +36,6 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
       </div>
 
       <div className="flex items-center space-x-2 md:space-x-6">
-        {/* Search Bar - Hidden on small mobile */}
         <div className="hidden sm:flex items-center bg-slate-50 border border-slate-200 rounded-xl px-4 py-1.5 w-40 md:w-64 focus-within:ring-2 focus-within:ring-emerald-500/20 focus-within:border-emerald-500 transition-all">
           <Search size={16} className="text-slate-400" />
           <input 
@@ -73,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
             </button>
             <div className="w-9 h-9 md:w-10 md:h-10 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden border border-slate-100 shadow-sm ring-2 ring-slate-50">
               <img 
-                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'Ajay'}`} 
+                src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.email || 'Chef'}`} 
                 alt="User Avatar" 
                 className="w-full h-full object-cover"
               />

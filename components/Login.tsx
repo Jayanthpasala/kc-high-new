@@ -1,8 +1,7 @@
-
 import React, { useState } from 'react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { ChefHat, Loader2, LogIn, ShieldCheck, Lock, PlayCircle, AlertTriangle } from 'lucide-react';
+import { ChefHat, Loader2, LogIn, ShieldCheck, Lock, AlertTriangle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,11 +15,9 @@ export const Login: React.FC = () => {
     setError('');
     
     try {
-      console.log("Attempting login for:", email);
       await signInWithEmailAndPassword(auth, email, password);
-      console.log("Login successful");
     } catch (err: any) {
-      console.error("Login Error Full:", err);
+      console.error("Login Error:", err);
       let msg = 'Authentication failed. Please check your credentials.';
       const errString = err.toString();
 
@@ -31,10 +28,9 @@ export const Login: React.FC = () => {
       } else if (err.code === 'auth/too-many-requests') {
         msg = 'Too many failed attempts. Try again later.';
       } else if (errString.includes('requests-to-this-api') && errString.includes('blocked')) {
-        // Updated message to reflect Referrer restrictions
-        msg = 'ACCESS BLOCKED: You have API Restrictions enabled. 1. Go to Google Cloud Console > Credentials. 2. Edit API Key. 3. Under "Application restrictions", add "localhost" and "127.0.0.1" (or your specific domain) to the "Websites" list.';
+        msg = 'Access Blocked: Please ensure your API restrictions allow this domain in Google Cloud Console.';
       } else if (err.code === 'auth/operation-not-allowed') {
-        msg = 'CONFIG ERROR: Go to Firebase Console > Authentication > Sign-in method and enable "Email/Password".';
+        msg = 'Config Error: Please enable Email/Password provider in Firebase Console.';
       } else if (err.message) {
         msg = `System Error: ${err.message}`;
       }
@@ -45,14 +41,8 @@ export const Login: React.FC = () => {
     }
   };
 
-  const enterDemoMode = () => {
-      localStorage.setItem('kms_demo_mode', 'true');
-      window.location.reload();
-  };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#0f172a] p-6 overflow-hidden relative">
-      {/* Background Decorative Elements */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full -mr-48 -mt-48 blur-3xl"></div>
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/10 rounded-full -ml-48 -mb-48 blur-3xl"></div>
 
@@ -75,30 +65,26 @@ export const Login: React.FC = () => {
 
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Staff Identity (Email)</label>
-            <div className="relative">
-              <input 
-                type="email" 
-                required
-                className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
-                placeholder="chef@kms-kitchen.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
+            <input 
+              type="email" 
+              required
+              className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
+              placeholder="chef@kms-kitchen.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
 
           <div className="space-y-2">
             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Access Protocol (Password)</label>
-            <div className="relative">
-              <input 
-                type="password" 
-                required
-                className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
+            <input 
+              type="password" 
+              required
+              className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
           </div>
 
           <button 
@@ -108,20 +94,6 @@ export const Login: React.FC = () => {
           >
             {loading ? <Loader2 className="animate-spin" size={18} /> : <LogIn size={18} />}
             Initialize Session
-          </button>
-
-          <div className="relative flex py-2 items-center">
-            <div className="flex-grow border-t border-slate-100"></div>
-            <span className="flex-shrink-0 mx-4 text-slate-300 text-[9px] font-black uppercase tracking-widest">Or</span>
-            <div className="flex-grow border-t border-slate-100"></div>
-          </div>
-
-          <button 
-            type="button" 
-            onClick={enterDemoMode}
-            className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-slate-200 hover:text-slate-900 transition-all active:scale-95"
-          >
-            <PlayCircle size={16} /> Enter Demo Mode
           </button>
 
           <div className="pt-2 text-center">
