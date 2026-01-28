@@ -17,12 +17,20 @@ import {
   CheckCircle,
   MoreVertical,
   Trash2,
-  Clock
+  Clock,
+  PartyPopper,
+  Save,
+  FileText
 } from 'lucide-react';
-import { GoogleGenAI, Type } from "@google/genai";
-import { ProductionPlan, Recipe, InventoryItem, InventoryReservation, PendingProcurement } from '../types';
+import { GoogleGenAI } from "@google/genai";
+import { ProductionPlan, Recipe, InventoryItem, InventoryReservation, Meal } from '../types';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
+
+// Helper to strip code fences from AI response
+const cleanJson = (text: string) => {
+  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+};
 
 const mockFirestore = {
   collection: 'productionPlans',
@@ -53,24 +61,36 @@ const mockFirestore = {
   }
 };
 
-type ViewMode = 'MONTH' | 'AGENDA';
-
 export const ProductionPlanning: React.FC = () => {
   const [view, setView] = useState<'CALENDAR' | 'UPLOAD' | 'REVIEW'>('CALENDAR');
-  const [viewMode, setViewMode] = useState<ViewMode>('MONTH');
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Data State
   const [pendingPlans, setPendingPlans] = useState<ProductionPlan[]>([]);
   const [approvedPlans, setApprovedPlans] = useState<ProductionPlan[]>([]);
-  const [selectedPlan, setSelectedPlan] = useState<ProductionPlan | null>(null);
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [activeTab, setActiveTab] = useState<'plan' | 'consumption'>('plan');
   
+  // Calendar State
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  
+  // Day Detail Modal State
+  const [dayPlan, setDayPlan] = useState<ProductionPlan | null>(null);
+  const [isDayModalOpen, setIsDayModalOpen] = useState(false);
+  const [entryMode, setEntryMode] = useState<'VIEW' | 'CREATE_MEAL' | 'CREATE_EVENT'>('VIEW');
+  
+  // Manual Entry Form State
+  const [manualMeals, setManualMeals] = useState<Meal[]>([
+    { mealType: 'Breakfast', dishes: [''] },
+    { mealType: 'Lunch', dishes: [''] },
+    { mealType: 'Dinner', dishes: [''] }
+  ]);
+  const [manualEventName, setManualEventName] = useState('');
+  const [manualNotes, setManualNotes] = useState('');
+
   const currentYear = new Date().getFullYear();
 
   const getLocalDateString = (date: Date) => {
     const year = date.getFullYear();
-    const month = String(date.getDate()).length === 1 ? `0${date.getMonth() + 1}` : date.getMonth() + 1;
-    // Fix month/day padding properly
     const m = String(date.getMonth() + 1).padStart(2, '0');
     const d = String(date.getDate()).padStart(2, '0');
     return `${year}-${m}-${d}`;
@@ -87,34 +107,77 @@ export const ProductionPlanning: React.FC = () => {
     return () => window.removeEventListener('storage', updatePlans);
   }, [view]);
 
-  // --- AUTOMATION ENGINE ---
-  const handleApproveAll = () => {
+  // --- ACTIONS ---
+
+  const handleDayClick = (date: Date) => {
+    const dateStr = getLocalDateString(date);
+    const existing = approvedPlans.find(p => p.date === dateStr);
+    
+    setSelectedDate(date);
+    setDayPlan(existing || null);
+    setEntryMode(existing ? 'VIEW' : 'VIEW'); // Default to view, if empty view handles "Empty State"
+    // Reset manual form
+    setManualMeals([
+        { mealType: 'Breakfast', dishes: [''] },
+        { mealType: 'Lunch', dishes: [''] },
+        { mealType: 'Dinner', dishes: [''] }
+    ]);
+    setManualEventName('');
+    setManualNotes('');
+    
+    setIsDayModalOpen(true);
+  };
+
+  const handleSaveManualPlan = () => {
+    if (!selectedDate) return;
+    
+    const newPlan: ProductionPlan = {
+      id: generateId(),
+      date: getLocalDateString(selectedDate),
+      type: entryMode === 'CREATE_EVENT' ? 'event' : 'production',
+      eventName: entryMode === 'CREATE_EVENT' ? manualEventName : undefined,
+      notes: manualNotes,
+      meals: entryMode === 'CREATE_MEAL' ? manualMeals.filter(m => m.dishes.some(d => d.trim() !== '')) : [],
+      isApproved: true, // Manual entry is auto-approved
+      createdAt: Date.now()
+    };
+
+    if (entryMode === 'CREATE_EVENT' && !manualEventName) {
+        alert("Please enter an event name.");
+        return;
+    }
+
+    mockFirestore.save(newPlan);
+    
+    // Trigger reservations for meals if needed
+    if (newPlan.type === 'production') {
+        processReservations([newPlan]);
+    }
+
+    updatePlans();
+    setIsDayModalOpen(false);
+    window.dispatchEvent(new Event('storage'));
+  };
+
+  // Logic to process reservations for a list of plans
+  const processReservations = (plans: ProductionPlan[]) => {
     const recipes: Recipe[] = JSON.parse(localStorage.getItem('recipes') || '[]');
     let pendingRecipes: string[] = JSON.parse(localStorage.getItem('pendingRecipes') || '[]');
     let reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
     const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
 
-    const approvedBatch: ProductionPlan[] = [];
+    plans.forEach(plan => {
+      if (plan.type === 'event') return;
 
-    pendingPlans.forEach(plan => {
-      const fullPlan = { ...plan, isApproved: true };
-      mockFirestore.save(fullPlan);
-      approvedBatch.push(fullPlan);
-
-      // --- LOGIC: CHECK EXISTING RECIPES & RESERVE STOCK ---
       plan.meals.forEach(meal => {
         meal.dishes.forEach(dish => {
-          // 1. Check if recipe exists
+          if (!dish.trim()) return;
           const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
-          
           if (recipe) {
-             // 2. If exists, calculate ingredients and soft-reserve
              recipe.ingredients.forEach(ing => {
                 const invItem = inventory.find(i => i.name.toLowerCase() === ing.name.toLowerCase());
                 if (invItem) {
                    const qtyNeeded = ing.amount * (ing.conversionFactor || 1);
-                   
-                   // Add to reservation ledger
                    reservations.push({
                       id: generateId(),
                       planId: plan.id,
@@ -123,14 +186,10 @@ export const ProductionPlanning: React.FC = () => {
                       quantity: qtyNeeded,
                       unit: ing.unit
                    });
-                   
-                   // Note: We don't deduct hard stock yet, only when 'Consumed'.
-                   // But we update the 'reserved' field on inventory.
                    invItem.reserved = (invItem.reserved || 0) + qtyNeeded;
                 }
              });
           } else {
-             // 3. If NOT exists, add to pendingRecipes (only if not already there)
              if (!pendingRecipes.includes(dish)) {
                 pendingRecipes.push(dish);
              }
@@ -139,30 +198,30 @@ export const ProductionPlanning: React.FC = () => {
       });
     });
 
-    // Save updated states
     localStorage.setItem('inventory', JSON.stringify(inventory));
     localStorage.setItem('inventoryReservations', JSON.stringify(reservations));
     localStorage.setItem('pendingRecipes', JSON.stringify(pendingRecipes));
+  };
 
+  const handleApproveAllPending = () => {
+    const batch = pendingPlans.map(p => ({ ...p, isApproved: true }));
+    batch.forEach(p => mockFirestore.save(p));
+    processReservations(batch);
     setPendingPlans([]);
-    updatePlans();
     setView('CALENDAR');
+    updatePlans();
     window.dispatchEvent(new Event('storage'));
   };
 
   const toggleConsumption = (id: string) => {
     const plan = approvedPlans.find(p => p.id === id);
-    if (!plan) return;
-    
-    // Only allow consumption once
-    if (plan.isConsumed) return; 
+    if (!plan || plan.isConsumed) return; 
 
     const recipes: Recipe[] = JSON.parse(localStorage.getItem('recipes') || '[]');
     const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
     let reservations: InventoryReservation[] = JSON.parse(localStorage.getItem('inventoryReservations') || '[]');
     let updatedInventory = [...inventory];
     
-    // Hard Deduction Logic
     plan.meals.forEach(meal => {
       meal.dishes.forEach(dish => {
         const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
@@ -171,10 +230,7 @@ export const ProductionPlanning: React.FC = () => {
             const invItemIdx = updatedInventory.findIndex(item => item.name.toLowerCase() === ing.name.toLowerCase());
             if (invItemIdx > -1) {
               const deduction = ing.amount * (ing.conversionFactor || 1.0);
-              
-              // Reduce Reserved
               updatedInventory[invItemIdx].reserved = Math.max(0, (updatedInventory[invItemIdx].reserved || 0) - deduction);
-              // Reduce Actual
               updatedInventory[invItemIdx].quantity = Math.max(0, updatedInventory[invItemIdx].quantity - deduction);
               
               const item = updatedInventory[invItemIdx];
@@ -187,7 +243,6 @@ export const ProductionPlanning: React.FC = () => {
       });
     });
 
-    // Clear reservations for this plan
     reservations = reservations.filter(r => r.planId !== plan.id);
     
     const updated = { ...plan, isConsumed: true };
@@ -197,7 +252,7 @@ export const ProductionPlanning: React.FC = () => {
     localStorage.setItem('inventoryReservations', JSON.stringify(reservations));
     
     updatePlans();
-    setSelectedPlan(updated);
+    setDayPlan(updated); // Update local modal state
     window.dispatchEvent(new Event('storage'));
   };
 
@@ -205,11 +260,11 @@ export const ProductionPlanning: React.FC = () => {
      if(confirm("Are you sure you want to delete this scheduled plan?")) {
         mockFirestore.delete(id);
         updatePlans();
-        setSelectedPlan(null);
+        setIsDayModalOpen(false);
      }
-  }
+  };
 
-  // File Upload & AI Parsing (Kept similar but polished)
+  // AI Document Upload
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -224,18 +279,23 @@ export const ProductionPlanning: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: {
-          parts: [
-            { inlineData: { data: base64, mimeType: file.type } },
-            { text: `Extract kitchen menu. The current year is ${currentYear}. If the document does not explicitly state the year, assume it is ${currentYear}. Return dates strictly in YYYY-MM-DD format. Output JSON array: [{date: "YYYY-MM-DD", meals: [{mealType: string, dishes: string[]}]}]` }
-          ]
-        },
+        contents: [
+          {
+            parts: [
+              { inlineData: { data: base64, mimeType: file.type } },
+              { text: `Extract kitchen menu. The current year is ${currentYear}. Return dates strictly in YYYY-MM-DD format. Output JSON array: [{date: "YYYY-MM-DD", meals: [{mealType: string, dishes: string[]}]}]` }
+            ]
+          }
+        ],
         config: {
             responseMimeType: "application/json"
         }
       });
       
-      const extractedData = JSON.parse(response.text || '[]');
+      const text = response.text || '[]';
+      const cleanText = cleanJson(text);
+      const extractedData = JSON.parse(cleanText);
+      
       const newPlans: ProductionPlan[] = extractedData.map((item: any) => ({
         id: generateId(), 
         date: item.date || new Date().toISOString().split('T')[0], 
@@ -252,14 +312,15 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans(newPlans);
       setView('REVIEW');
     } catch (error) {
-      alert("Error processing menu. Please try again.");
+      console.error(error);
+      alert("Error processing menu. Please try a clear image or PDF.");
     } finally {
       setIsProcessing(false);
       e.target.value = '';
     }
   };
 
-  // Calendar Helpers
+  // Helpers
   const daysInMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
   const startDayOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   
@@ -268,7 +329,7 @@ export const ProductionPlanning: React.FC = () => {
       const startDay = startDayOfMonth(currentMonth);
       const grid = [];
       
-      // Empty slots for previous month
+      // Empty slots
       for (let i = 0; i < startDay; i++) {
           grid.push(<div key={`empty-${i}`} className="bg-slate-50/30 border-r border-b border-slate-100 h-24 sm:h-32 md:h-40"></div>);
       }
@@ -279,46 +340,118 @@ export const ProductionPlanning: React.FC = () => {
           const dateStr = getLocalDateString(date);
           const dayPlans = approvedPlans.filter(p => p.date === dateStr);
           const isToday = new Date().toDateString() === date.toDateString();
+          const hasPlan = dayPlans.length > 0;
+          const plan = dayPlans[0]; // Assuming 1 plan per day for simplicity
 
           grid.push(
               <div 
                 key={day} 
                 className={`border-r border-b border-slate-100 h-24 sm:h-32 md:h-40 p-2 relative group transition-all hover:bg-slate-50 cursor-pointer ${isToday ? 'bg-emerald-50/30' : 'bg-white'}`}
-                onClick={() => {
-                   if (dayPlans.length > 0) setSelectedPlan(dayPlans[0]);
-                }}
+                onClick={() => handleDayClick(date)}
               >
                  <div className="flex justify-between items-start">
                      <span className={`text-sm font-bold w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center rounded-full ${isToday ? 'bg-slate-900 text-white' : 'text-slate-500'}`}>{day}</span>
-                     {dayPlans.length > 0 && (
-                         <span className={`text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${dayPlans[0].isConsumed ? 'bg-slate-200 text-slate-500' : 'bg-emerald-100 text-emerald-600'}`}>
-                            {dayPlans[0].isConsumed ? 'Done' : 'Active'}
+                     {hasPlan && (
+                         <span className={`text-[8px] sm:text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                             plan.type === 'event' 
+                               ? 'bg-purple-100 text-purple-600' 
+                               : plan.isConsumed 
+                                 ? 'bg-slate-200 text-slate-500' 
+                                 : 'bg-emerald-100 text-emerald-600'
+                         }`}>
+                            {plan.type === 'event' ? 'Event' : plan.isConsumed ? 'Done' : 'Active'}
                          </span>
                      )}
                  </div>
                  
-                 <div className="mt-2 space-y-1 overflow-y-auto max-h-[50px] sm:max-h-[80px] custom-scrollbar">
-                     {dayPlans.map(plan => (
-                         <div key={plan.id} className="bg-white border border-slate-200 rounded-lg p-1.5 sm:p-2 shadow-sm hover:border-emerald-500 transition-colors">
-                            {plan.meals.slice(0, 2).map((m, i) => (
-                                <div key={i} className="flex gap-1 items-center mb-1">
-                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.mealType.includes('Breakfast') ? 'bg-amber-400' : m.mealType.includes('Lunch') ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
-                                    <span className="text-[8px] sm:text-[9px] font-bold text-slate-700 truncate w-full">{m.dishes[0]}</span>
-                                </div>
-                            ))}
-                            {plan.meals.length > 2 && <span className="text-[8px] text-slate-400 block text-center">+ {plan.meals.length - 2} more</span>}
-                         </div>
-                     ))}
-                 </div>
+                 {hasPlan && (
+                     <div className="mt-2 space-y-1">
+                         {plan.type === 'event' ? (
+                             <div className="bg-purple-50 border border-purple-100 rounded-lg p-1.5 shadow-sm">
+                                 <p className="text-[9px] font-bold text-purple-700 truncate">{plan.eventName}</p>
+                             </div>
+                         ) : (
+                             <div className="space-y-1 overflow-y-auto max-h-[50px] custom-scrollbar">
+                                {plan.meals.slice(0, 2).map((m, i) => (
+                                    <div key={i} className="bg-white border border-slate-200 rounded-lg p-1 px-2 shadow-sm flex items-center gap-1.5">
+                                        <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${m.mealType.includes('Breakfast') ? 'bg-amber-400' : m.mealType.includes('Lunch') ? 'bg-blue-400' : 'bg-slate-400'}`}></div>
+                                        <span className="text-[8px] font-bold text-slate-600 truncate">{m.dishes[0] || 'TBD'}</span>
+                                    </div>
+                                ))}
+                                {plan.meals.length > 2 && <span className="text-[8px] text-slate-400 block text-center">+ more</span>}
+                             </div>
+                         )}
+                     </div>
+                 )}
               </div>
           );
       }
-
       return grid;
+  };
+
+  // --- RENDER HELPERS FOR MODAL ---
+  const renderEntryForm = () => {
+     if (entryMode === 'CREATE_MEAL') {
+         return (
+             <div className="space-y-6">
+                 {manualMeals.map((meal, idx) => (
+                     <div key={idx} className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                         <h5 className="text-xs font-black uppercase text-slate-400 mb-2">{meal.mealType}</h5>
+                         <input 
+                           type="text" 
+                           placeholder="Dish Name (e.g. Chicken Curry)" 
+                           className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 transition-colors"
+                           value={meal.dishes[0]}
+                           onChange={(e) => {
+                               const updated = [...manualMeals];
+                               updated[idx].dishes[0] = e.target.value;
+                               setManualMeals(updated);
+                           }}
+                         />
+                     </div>
+                 ))}
+                 <div className="flex gap-3 pt-4">
+                     <button onClick={() => setEntryMode('VIEW')} className="flex-1 py-3 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600">Cancel</button>
+                     <button onClick={handleSaveManualPlan} className="flex-1 bg-emerald-500 text-slate-900 py-3 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-emerald-400 transition-colors shadow-lg">Save Meal Plan</button>
+                 </div>
+             </div>
+         );
+     }
+     if (entryMode === 'CREATE_EVENT') {
+         return (
+             <div className="space-y-6">
+                 <div className="space-y-2">
+                     <label className="text-[10px] font-black uppercase text-slate-400">Event Title</label>
+                     <input 
+                       type="text" 
+                       placeholder="e.g. Wedding Banquet, Staff Holiday" 
+                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-lg font-bold text-slate-900 outline-none focus:border-purple-500 transition-colors"
+                       value={manualEventName}
+                       onChange={(e) => setManualEventName(e.target.value)}
+                     />
+                 </div>
+                 <div className="space-y-2">
+                     <label className="text-[10px] font-black uppercase text-slate-400">Notes / Details</label>
+                     <textarea 
+                       placeholder="Additional details..." 
+                       className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-4 text-sm font-medium text-slate-900 outline-none focus:border-purple-500 transition-colors resize-none h-32"
+                       value={manualNotes}
+                       onChange={(e) => setManualNotes(e.target.value)}
+                     />
+                 </div>
+                 <div className="flex gap-3 pt-4">
+                     <button onClick={() => setEntryMode('VIEW')} className="flex-1 py-3 text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600">Cancel</button>
+                     <button onClick={handleSaveManualPlan} className="flex-1 bg-purple-500 text-white py-3 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-purple-600 transition-colors shadow-lg">Save Event</button>
+                 </div>
+             </div>
+         );
+     }
+     return null;
   };
 
   return (
     <div className="space-y-8 pb-24">
+      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight flex items-center gap-3">
@@ -331,7 +464,7 @@ export const ProductionPlanning: React.FC = () => {
           {view !== 'CALENDAR' && (
             <button onClick={() => setView('CALENDAR')} className="px-5 py-2.5 text-slate-600 bg-white border border-slate-200 rounded-xl font-bold text-xs uppercase transition-all shadow-sm">Back</button>
           )}
-          <button onClick={() => setView('UPLOAD')} className="flex items-center gap-2 bg-slate-900 text-white px-7 py-2.5 rounded-xl shadow-lg font-bold text-xs uppercase transition-all"><Upload size={16} /> Import Plan</button>
+          <button onClick={() => setView('UPLOAD')} className="flex items-center gap-2 bg-slate-900 text-white px-7 py-2.5 rounded-xl shadow-lg font-bold text-xs uppercase transition-all"><Upload size={16} /> Import Menu</button>
         </div>
       </div>
 
@@ -345,6 +478,7 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
+      {/* Upload View */}
       {view === 'UPLOAD' && (
         <div className="bg-white border-2 border-dashed border-slate-200 rounded-[2.5rem] p-12 sm:p-24 text-center">
           <CalendarIcon className="text-emerald-600 mx-auto mb-8" size={60} />
@@ -355,9 +489,9 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
+      {/* Review View */}
       {view === 'REVIEW' && (
         <div className="space-y-8 animate-in fade-in duration-500">
-           {/* Same Review UI as before, just kept concise for this response block */}
            <div className="bg-emerald-50 border border-emerald-100 p-6 rounded-[2rem] flex items-center gap-4">
               <CheckCircle className="text-emerald-500" size={32} />
               <div>
@@ -401,12 +535,13 @@ export const ProductionPlanning: React.FC = () => {
               ))}
            </div>
 
-           <button onClick={handleApproveAll} className="fixed bottom-10 right-10 bg-emerald-500 text-slate-900 px-10 py-5 rounded-3xl font-black uppercase shadow-2xl z-50 hover:scale-105 transition-transform flex items-center gap-2">
+           <button onClick={handleApproveAllPending} className="fixed bottom-10 right-10 bg-emerald-500 text-slate-900 px-10 py-5 rounded-3xl font-black uppercase shadow-2xl z-50 hover:scale-105 transition-transform flex items-center gap-2">
               <CheckCircle2 size={20} /> Approve All Plans
            </button>
         </div>
       )}
 
+      {/* Calendar View */}
       {view === 'CALENDAR' && (
          <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden flex flex-col">
             <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 bg-slate-50/40">
@@ -430,56 +565,92 @@ export const ProductionPlanning: React.FC = () => {
          </div>
       )}
 
-      {/* Detail Modal */}
-      {selectedPlan && (
+      {/* DAY SNIPPET MODAL (Day Detail Inspector) */}
+      {isDayModalOpen && selectedDate && (
          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xl animate-in fade-in duration-300">
-            <div className="bg-white rounded-[3rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100 flex flex-col max-h-[90vh]">
-               <div className="bg-slate-900 p-8 text-white flex justify-between items-center shrink-0">
+            <div className="bg-white rounded-[3rem] w-full max-w-lg overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col max-h-[85vh]">
+               <div className="bg-slate-900 p-8 text-white shrink-0 flex justify-between items-center">
                   <div>
-                     <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest mb-1">Production Schedule</p>
-                     <h3 className="text-2xl font-bold">{new Date(selectedPlan.date).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+                     <p className="text-emerald-400 text-[10px] font-black uppercase tracking-widest mb-1">Day Inspector</p>
+                     <h3 className="text-2xl font-bold">{selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
                   </div>
-                  <div className="flex gap-2">
-                     <button onClick={() => deletePlan(selectedPlan.id)} className="p-3 bg-white/10 rounded-xl hover:bg-rose-500 transition-colors"><Trash2 size={20} /></button>
-                     <button onClick={() => setSelectedPlan(null)} className="p-3 bg-white/10 rounded-xl hover:bg-white/20 transition-colors"><X size={20} /></button>
-                  </div>
+                  <button onClick={() => setIsDayModalOpen(false)} className="p-3 bg-white/10 rounded-xl hover:bg-white/20 transition-colors"><X size={20} /></button>
                </div>
 
-               <div className="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-8">
-                  {selectedPlan.isConsumed ? (
-                     <div className="bg-slate-100 p-4 rounded-xl flex items-center gap-3 text-slate-500 text-xs font-bold">
-                        <CheckCircle size={16} /> Production Completed & Stock Deducted
-                     </div>
-                  ) : (
-                     <div className="bg-emerald-50 p-4 rounded-xl flex items-center gap-3 text-emerald-700 text-xs font-bold border border-emerald-100">
-                        <Clock size={16} /> Scheduled - Stock Reserved
-                     </div>
+               <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-white space-y-6">
+                  {/* VIEW MODE */}
+                  {entryMode === 'VIEW' && (
+                      <>
+                        {dayPlan ? (
+                            <div className="space-y-6">
+                                {/* Plan Header */}
+                                {dayPlan.type === 'event' ? (
+                                    <div className="bg-purple-50 p-6 rounded-[2rem] text-center border-2 border-purple-100">
+                                        <PartyPopper size={40} className="text-purple-500 mx-auto mb-3" />
+                                        <h4 className="text-xl font-black text-purple-900">{dayPlan.eventName}</h4>
+                                        <p className="text-sm font-medium text-purple-700 mt-2">{dayPlan.notes || 'No additional details.'}</p>
+                                    </div>
+                                ) : (
+                                    <div className={`p-6 rounded-[2rem] text-center border-2 ${dayPlan.isConsumed ? 'bg-slate-100 border-slate-200' : 'bg-emerald-50 border-emerald-100'}`}>
+                                        <ChefHat size={40} className={`mx-auto mb-3 ${dayPlan.isConsumed ? 'text-slate-400' : 'text-emerald-500'}`} />
+                                        <h4 className={`text-xl font-black ${dayPlan.isConsumed ? 'text-slate-600' : 'text-emerald-900'}`}>Production Schedule</h4>
+                                        <div className={`inline-block px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest mt-2 ${dayPlan.isConsumed ? 'bg-slate-200 text-slate-500' : 'bg-emerald-200 text-emerald-800'}`}>
+                                            {dayPlan.isConsumed ? 'Status: Consumed' : 'Status: Active'}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Plan Content */}
+                                {dayPlan.type !== 'event' && (
+                                    <div className="space-y-4">
+                                        {dayPlan.meals.map((meal, i) => (
+                                            <div key={i} className="border-b border-slate-100 pb-4 last:border-0 last:pb-0">
+                                                <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">{meal.mealType}</p>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {meal.dishes.map((dish, d) => (
+                                                        <span key={d} className="bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg text-sm font-bold text-slate-700">{dish}</span>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {/* Actions */}
+                                <div className="grid grid-cols-2 gap-3 pt-4">
+                                    {!dayPlan.isConsumed && dayPlan.type === 'production' && (
+                                        <button onClick={() => toggleConsumption(dayPlan.id)} className="col-span-2 bg-slate-900 text-white py-3 rounded-xl font-black uppercase tracking-widest text-xs hover:bg-emerald-600 transition-colors shadow-lg">Mark Consumed</button>
+                                    )}
+                                    <button onClick={() => deletePlan(dayPlan.id)} className="col-span-2 py-3 text-rose-500 hover:bg-rose-50 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors flex items-center justify-center gap-2 border border-transparent hover:border-rose-100">
+                                        <Trash2 size={16} /> Delete Entry
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-10">
+                                <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-slate-100">
+                                    <CalendarCheck size={32} className="text-slate-300" />
+                                </div>
+                                <h4 className="text-lg font-bold text-slate-900">Nothing Planned</h4>
+                                <p className="text-slate-500 text-sm mt-1 max-w-xs mx-auto">No production cycles or events are scheduled for this date.</p>
+                                
+                                <div className="grid grid-cols-2 gap-4 mt-8">
+                                    <button onClick={() => setEntryMode('CREATE_MEAL')} className="p-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-emerald-500 hover:text-emerald-600 transition-all group flex flex-col items-center gap-2 shadow-sm">
+                                        <ChefHat size={24} className="text-slate-400 group-hover:text-emerald-500" />
+                                        <span className="font-black text-[10px] uppercase tracking-widest">Add Meal Plan</span>
+                                    </button>
+                                    <button onClick={() => setEntryMode('CREATE_EVENT')} className="p-4 rounded-2xl bg-white border-2 border-slate-100 hover:border-purple-500 hover:text-purple-600 transition-all group flex flex-col items-center gap-2 shadow-sm">
+                                        <PartyPopper size={24} className="text-slate-400 group-hover:text-purple-500" />
+                                        <span className="font-black text-[10px] uppercase tracking-widest">Add Event</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                      </>
                   )}
 
-                  {selectedPlan.meals.map((meal, i) => (
-                     <div key={i} className="border-b border-slate-100 last:border-0 pb-6 last:pb-0">
-                        <h4 className="text-lg font-black text-slate-900 mb-3">{meal.mealType}</h4>
-                        <div className="flex flex-wrap gap-2">
-                           {meal.dishes.map((dish, di) => (
-                              <div key={di} className="px-4 py-2 bg-slate-50 rounded-lg text-sm font-semibold text-slate-700 border border-slate-200">
-                                 {dish}
-                              </div>
-                           ))}
-                        </div>
-                     </div>
-                  ))}
-               </div>
-
-               <div className="p-8 bg-slate-50 border-t border-slate-200 shrink-0">
-                  {!selectedPlan.isConsumed ? (
-                     <button onClick={() => toggleConsumption(selectedPlan.id)} className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2">
-                        <CheckCircle2 size={18} /> Mark Production Complete
-                     </button>
-                  ) : (
-                     <button disabled className="w-full bg-slate-200 text-slate-400 py-4 rounded-2xl font-black uppercase tracking-widest cursor-not-allowed">
-                        Production Closed
-                     </button>
-                  )}
+                  {/* CREATE MODES */}
+                  {entryMode !== 'VIEW' && renderEntryForm()}
                </div>
             </div>
          </div>
