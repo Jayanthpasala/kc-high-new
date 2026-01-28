@@ -283,7 +283,16 @@ export const ProductionPlanning: React.FC = () => {
           {
             parts: [
               { inlineData: { data: base64, mimeType: file.type } },
-              { text: `Extract kitchen menu. The current year is ${currentYear}. Return dates strictly in YYYY-MM-DD format.` }
+              { text: `Analyze this menu image. It is a schedule table where:
+                1. Columns represent dates/days (e.g., '27 Monday').
+                2. Rows represent meal types (Breakfast, Lunch, Snacks/Dinner).
+                
+                CRITICAL INSTRUCTIONS:
+                - Identify the month from headers like "Menu - Oct 27-31" or column headers.
+                - Combine the current year (${currentYear}), the identified month, and the day number to form a valid date (YYYY-MM-DD).
+                - Extract all dishes listed for each meal type on each day.
+                - Return the data as a JSON array.
+                ` }
             ]
           }
         ],
@@ -317,9 +326,21 @@ export const ProductionPlanning: React.FC = () => {
       });
       
       const text = response.text || '[]';
+      console.log("AI Response:", text); // Debug log
+
       const cleanText = cleanJson(text);
-      const extractedData = JSON.parse(cleanText);
+      let extractedData;
+      try {
+          extractedData = JSON.parse(cleanText);
+      } catch (parseError) {
+          console.error("JSON Parse Error:", parseError, cleanText);
+          throw new Error("Failed to parse AI response. The menu structure might be too complex.");
+      }
       
+      if (!Array.isArray(extractedData)) {
+          throw new Error("Invalid data format returned by AI.");
+      }
+
       const newPlans: ProductionPlan[] = extractedData.map((item: any) => ({
         id: generateId(), 
         date: item.date || new Date().toISOString().split('T')[0], 
@@ -335,9 +356,9 @@ export const ProductionPlanning: React.FC = () => {
 
       setPendingPlans(newPlans);
       setView('REVIEW');
-    } catch (error) {
-      console.error(error);
-      alert("Error processing menu. Please try a clear image or PDF.");
+    } catch (error: any) {
+      console.error("AI Processing Error:", error);
+      alert(`Error processing menu: ${error.message || "Please check the image and try again."}`);
     } finally {
       setIsProcessing(false);
       e.target.value = '';
