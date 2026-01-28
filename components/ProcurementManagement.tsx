@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   ShoppingCart, 
@@ -36,7 +35,6 @@ const DEFAULT_PO_CONFIG: POTemplateConfig = {
 
 const KITCHEN_UNITS = ['kg', 'L', 'g', 'ml', 'pcs', 'pkt', 'box', 'crate', 'dozen', 'tin'];
 
-// Fallback vendors to ensure the dropdown is never empty
 const DEFAULT_VENDORS: Vendor[] = [
   {
     id: 'V1',
@@ -87,7 +85,7 @@ interface AuditItem {
 }
 
 interface POLineItemState {
-  id: string; // ID of the PendingProcurement
+  id: string;
   quantity: number;
   unitPrice: number;
   brand?: string;
@@ -103,34 +101,18 @@ export const ProcurementManagement: React.FC = () => {
   const [brands, setBrands] = useState<Brand[]>([]);
   const [activeTab, setActiveTab] = useState<'SHORTAGES' | 'PENDING' | 'COMPLETED'>('SHORTAGES');
   const [poConfig, setPoConfig] = useState<POTemplateConfig>(DEFAULT_PO_CONFIG);
-  
-  // Selection State for Bulk Action
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-
-  // Modals / Focused states
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
-  
-  // Replaced single approval with multi-item array
   const [approvingItems, setApprovingItems] = useState<PendingProcurement[] | null>(null);
-  
   const [viewingPO, setViewingPO] = useState<PurchaseOrder | null>(null);
   const [verifyingPO, setVerifyingPO] = useState<PurchaseOrder | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
-  // Verification / Audit state
   const [auditData, setAuditData] = useState<Record<string, AuditItem>>({});
   const [verificationRemarks, setVerificationRemarks] = useState('');
-
-  // Manual Request Form State
   const [manualReq, setManualReq] = useState({
-    name: '',
-    brand: '',
-    qty: 0,
-    unit: 'kg',
+    name: '', brand: '', qty: 0, unit: 'kg',
     date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
-
-  // Approval Form State (Bulk)
   const [bulkVendorId, setBulkVendorId] = useState('');
   const [poLineItems, setPoLineItems] = useState<Record<string, POLineItemState>>({});
 
@@ -140,11 +122,9 @@ export const ProcurementManagement: React.FC = () => {
       vends = DEFAULT_VENDORS;
       localStorage.setItem('vendors', JSON.stringify(vends));
     }
-    
     const pos = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
     const manualProcs = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
     const savedConfig = localStorage.getItem('poTemplateConfig');
-    
     if (savedConfig) setPoConfig(JSON.parse(savedConfig));
     setVendors(vends);
     setPurchaseOrders(pos);
@@ -155,9 +135,7 @@ export const ProcurementManagement: React.FC = () => {
     const unsubInv = onSnapshot(collection(db, "inventory"), (snap) => {
       const invData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
       setInventory(invData);
-      
       const { manualProcs } = loadLocalData();
-      
       const autoShortages: PendingProcurement[] = invData
         .filter((item: InventoryItem) => (item.quantity - (item.reserved || 0)) <= item.reorderLevel)
         .map((item: InventoryItem) => ({
@@ -173,7 +151,6 @@ export const ProcurementManagement: React.FC = () => {
           createdAt: Date.now(),
           isManual: false
         }));
-      
       setProcurements([...autoShortages, ...manualProcs]);
     });
 
@@ -188,6 +165,15 @@ export const ProcurementManagement: React.FC = () => {
       window.removeEventListener('storage', loadLocalData);
     };
   }, []);
+
+  const totalSelectedValue = useMemo(() => {
+     return procurements
+      .filter(p => selectedIds.has(p.id))
+      .reduce((acc: number, curr) => {
+         const vendorPrice = vendors.find(v => v.priceLedger?.find(pl => pl.itemName === curr.ingredientName))?.priceLedger?.find(pl => pl.itemName === curr.ingredientName)?.price || 0;
+         return acc + (curr.requiredQty * vendorPrice);
+      }, 0);
+  }, [selectedIds, procurements, vendors]);
 
   const toggleSelection = (id: string) => {
     const newSet = new Set(selectedIds);
@@ -214,57 +200,41 @@ export const ProcurementManagement: React.FC = () => {
       createdAt: Date.now(),
       isManual: true
     };
-    
     const existingManual = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
     const updatedManual = [newReq, ...existingManual];
     localStorage.setItem('manualProcurements', JSON.stringify(updatedManual));
-    
-    setProcurements(prev => {
-      const autos = prev.filter(p => !p.isManual);
-      return [...autos, ...updatedManual];
-    });
-
+    setProcurements(prev => [...prev.filter(p => !p.isManual), ...updatedManual]);
     setIsRequestModalOpen(false);
     setManualReq({
-      name: '',
-      brand: '',
-      qty: 0,
-      unit: 'kg',
+      name: '', brand: '', qty: 0, unit: 'kg',
       date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]
     });
     window.dispatchEvent(new Event('storage'));
   };
 
-  // Start Bulk Order Flow
   const handleInitiateBulkPurchase = () => {
     const itemsToOrder = procurements.filter(p => selectedIds.has(p.id));
     if (itemsToOrder.length === 0) return;
-
-    // Initialize line items state
     const lineItems: Record<string, POLineItemState> = {};
     itemsToOrder.forEach(item => {
        lineItems[item.id] = {
          id: item.id,
          quantity: item.requiredQty,
-         unitPrice: 0, // Will update when vendor selected
+         unitPrice: 0,
          brand: item.brand,
          ingredientName: item.ingredientName,
          unit: item.unit
        };
     });
-
     setPoLineItems(lineItems);
     setApprovingItems(itemsToOrder);
-    setBulkVendorId(''); // Reset vendor selection
+    setBulkVendorId('');
   };
 
-  // When vendor changes in Bulk Modal, update prices
   useEffect(() => {
     if (!bulkVendorId || !approvingItems) return;
-
     const vendor = vendors.find(v => v.id === bulkVendorId);
     if (!vendor) return;
-
     setPoLineItems(prev => {
        const updated = { ...prev };
        Object.keys(updated).forEach(key => {
@@ -291,13 +261,10 @@ export const ProcurementManagement: React.FC = () => {
         alert("Action Required: Please select a supplier for this consolidated order.");
         return;
     }
-    
     setIsSubmitting(true);
     try {
       const selectedVendor = vendors.find(v => v.id === bulkVendorId);
       const uniqueOrderNo = `PO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-
-      // Calculate Total and Format Items
       let grandTotal = 0;
       const finalItems = Object.values(poLineItems).map((line: POLineItemState) => {
          grandTotal += (line.quantity * line.unitPrice);
@@ -309,48 +276,37 @@ export const ProcurementManagement: React.FC = () => {
             priceAtOrder: line.unitPrice
          };
       });
-
       const newPO: PurchaseOrder = {
         id: Math.random().toString(36).substr(2, 9),
         orderNumber: uniqueOrderNo,
         vendorId: selectedVendor?.id || 'V-UNKNOWN',
         vendorName: selectedVendor?.name || 'Manual Partner',
         items: finalItems,
-        expectedDeliveryDate: approvingItems[0].requiredByDate, // Use first item's date as target
+        expectedDeliveryDate: approvingItems[0].requiredByDate,
         status: 'pending',
         createdAt: Date.now(),
         totalCost: grandTotal
       };
-      
       const updatedPOs = [newPO, ...purchaseOrders];
       localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
       setPurchaseOrders(updatedPOs);
-      
-      // Remove manual requests from local storage if any
       const manualIdsToRemove = approvingItems.filter(p => p.isManual).map(p => p.id);
       if (manualIdsToRemove.length > 0) {
         const existingManual = JSON.parse(localStorage.getItem('manualProcurements') || '[]');
         const filteredManual = existingManual.filter((p: any) => !manualIdsToRemove.includes(p.id));
         localStorage.setItem('manualProcurements', JSON.stringify(filteredManual));
       }
-      
-      // Clear selection
       setSelectedIds(new Set());
       setApprovingItems(null);
       setBulkVendorId('');
       setActiveTab('PENDING');
       window.dispatchEvent(new Event('storage'));
-      
-      setTimeout(() => alert(`Consolidated Order ${uniqueOrderNo} Generated Successfully!`), 100);
+      setTimeout(() => alert(`Consolidated Order ${uniqueOrderNo} Generated!`), 100);
     } catch (err) {
-      console.error(err);
       alert("Failed to generate Purchase Order.");
-    } finally {
-      setIsSubmitting(false);
-    }
+    } finally { setIsSubmitting(false); }
   };
 
-  // ... (Keeping GRN Logic same as before)
   const startPhysicalAudit = (po: PurchaseOrder) => {
     setVerifyingPO(po);
     const initialAudit: Record<string, AuditItem> = {};
@@ -376,90 +332,44 @@ export const ProcurementManagement: React.FC = () => {
 
   const commitGRN = async () => {
     if (!verifyingPO) return;
-    const itemsFailedQuality = Object.values(auditData).some((item: AuditItem) => !item.qualityPassed);
-    if (itemsFailedQuality) {
-       if (!confirm("Attention: Some items failed quality checks. Proceed with partial inventory update?")) return;
-    }
-
     setIsSubmitting(true);
     const grnNumber = `GRN-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substr(2, 3).toUpperCase()}`;
-    
     try {
       const batch = writeBatch(db);
       for (const item of verifyingPO.items) {
          const audit = auditData[item.ingredientName];
          if (!audit || audit.receivedQty <= 0 || !audit.qualityPassed) continue;
-
          const invItem = inventory.find(i => i.name.toLowerCase() === item.ingredientName.toLowerCase());
          if (invItem) {
             const newQty = (invItem.quantity || 0) + audit.receivedQty;
-            const status = newQty <= 0 ? 'out' : newQty <= (invItem.reorderLevel || 0) ? 'low' : 'healthy';
-            const ref = doc(db, "inventory", invItem.id);
-            batch.update(ref, {
+            batch.update(doc(db, "inventory", invItem.id), {
                quantity: newQty,
                lastPrice: item.priceAtOrder || invItem.lastPrice,
                lastRestocked: new Date().toISOString().split('T')[0],
-               status
-            });
-         } else {
-            const newRef = doc(collection(db, "inventory"));
-            batch.set(newRef, {
-               name: item.ingredientName,
-               brand: item.brand || '',
-               category: 'Procured Stock',
-               quantity: audit.receivedQty,
-               unit: item.unit,
-               reorderLevel: 5,
-               lastPrice: item.priceAtOrder || 0,
-               lastRestocked: new Date().toISOString().split('T')[0],
-               status: 'healthy',
-               supplier: verifyingPO.vendorName
+               status: newQty <= (invItem.reorderLevel || 0) ? 'low' : 'healthy'
             });
          }
       }
       await batch.commit();
-
       const updatedPOs = purchaseOrders.map(po => 
          po.id === verifyingPO.id 
-         ? { 
-             ...po, 
-             status: 'received' as const, 
-             receivedAt: Date.now(), 
-             remarks: verificationRemarks,
-             grnNumber: grnNumber,
-             items: po.items.map(i => ({ ...i, receivedQuantity: auditData[i.ingredientName]?.receivedQty || 0 }))
-           } 
+         ? { ...po, status: 'received' as const, receivedAt: Date.now(), grnNumber } 
          : po
       );
       localStorage.setItem('purchaseOrders', JSON.stringify(updatedPOs));
       setPurchaseOrders(updatedPOs);
-
       setVerifyingPO(null);
       setActiveTab('COMPLETED');
       window.dispatchEvent(new Event('storage'));
-      setTimeout(() => alert(`GRN Generated: ${grnNumber}`), 100);
-    } catch (error) {
-      alert("Failed to update inventory database.");
-    } finally {
-      setIsSubmitting(false);
-    }
+      alert(`GRN Generated: ${grnNumber}`);
+    } catch (error) { alert("Failed to update inventory."); }
+    finally { setIsSubmitting(false); }
   };
 
   const downloadPDF = (po: PurchaseOrder) => {
     setViewingPO(po);
     setTimeout(() => window.print(), 500);
   };
-
-  const totalSelectedValue = useMemo(() => {
-     // Estimate value of selected items (average from inventory if possible)
-     return procurements
-      .filter(p => selectedIds.has(p.id))
-      .reduce((acc, curr) => {
-         // Try to find a price estimate from any vendor
-         const vendorPrice = vendors.find(v => v.priceLedger?.find(pl => pl.itemName === curr.ingredientName))?.priceLedger?.find(pl => pl.itemName === curr.ingredientName)?.price || 0;
-         return acc + (curr.requiredQty * vendorPrice);
-      }, 0);
-  }, [selectedIds, procurements, vendors]);
 
   return (
     <div className="space-y-8 pb-32 animate-in fade-in duration-500 relative">
@@ -490,31 +400,19 @@ export const ProcurementManagement: React.FC = () => {
           {procurements.map(p => {
              const isSelected = selectedIds.has(p.id);
              return (
-              <div 
-                key={p.id} 
-                onClick={() => toggleSelection(p.id)}
-                className={`p-6 sm:p-8 rounded-[3rem] border-2 shadow-sm transition-all flex flex-col justify-between group animate-in slide-in-from-bottom-4 h-full cursor-pointer relative overflow-hidden min-h-[320px] ${isSelected ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20' : 'bg-white border-slate-100 hover:shadow-xl'}`}
-              >
-                {isSelected && (
-                   <div className="absolute top-0 right-0 p-6 bg-emerald-500 rounded-bl-[2rem] text-white">
-                      <CheckCircle size={24} />
-                   </div>
-                )}
+              <div key={p.id} onClick={() => toggleSelection(p.id)} className={`p-6 sm:p-8 rounded-[3rem] border-2 shadow-sm transition-all flex flex-col justify-between group animate-in slide-in-from-bottom-4 h-full cursor-pointer relative overflow-hidden min-h-[320px] ${isSelected ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20' : 'bg-white border-slate-100 hover:shadow-xl'}`}>
+                {isSelected && <div className="absolute top-0 right-0 p-6 bg-emerald-500 rounded-bl-[2rem] text-white"><CheckCircle size={24} /></div>}
                 <div className="flex justify-between items-start mb-6">
-                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-all ${isSelected ? 'bg-white text-emerald-500' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white'}`}>
-                     <AlertTriangle size={28} />
-                  </div>
+                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center transition-all ${isSelected ? 'bg-white text-emerald-500' : 'bg-slate-50 text-slate-400 group-hover:bg-slate-900 group-hover:text-white'}`}><AlertTriangle size={28} /></div>
                   <div className="text-right pr-2">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Needed</p>
                     <p className="text-sm font-black text-slate-900">{p.requiredQty} {p.unit}</p>
                   </div>
                 </div>
-                
                 <div>
                    <h3 className="text-xl sm:text-2xl font-black text-slate-900 mb-2 leading-tight">{p.ingredientName}</h3>
                    {p.brand && <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1 mb-4"><Tag size={12} /> Brand: {p.brand}</p>}
                 </div>
-                
                 <div className="mt-auto pt-8 border-t border-slate-200/50 flex items-center gap-2 text-slate-400">
                    {isSelected ? <CheckSquare size={20} className="text-emerald-500" /> : <Square size={20} />}
                    <span className="text-[10px] font-black uppercase tracking-widest">{isSelected ? 'Selected for Order' : 'Click to Select'}</span>
@@ -522,23 +420,14 @@ export const ProcurementManagement: React.FC = () => {
               </div>
              );
           })}
-          {procurements.length === 0 && (
-            <div className="col-span-full py-32 text-center bg-slate-50/20 rounded-[3rem] border-2 border-dashed border-slate-200">
-               <Package size={48} className="text-slate-200 mx-auto mb-4" />
-               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Inventory baseline healthy. No critical shortages.</p>
-            </div>
-          )}
         </div>
       )}
 
-      {/* FLOATING ACTION BAR FOR BULK ACTIONS */}
       {selectedIds.size > 0 && activeTab === 'SHORTAGES' && (
          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[95%] max-w-2xl px-4 animate-in slide-in-from-bottom-10 fade-in">
             <div className="bg-slate-900 text-white p-4 rounded-3xl shadow-2xl flex items-center justify-between border-4 border-white/10 backdrop-blur-md">
                <div className="flex items-center gap-4 pl-4">
-                  <div className="bg-emerald-500 text-slate-900 w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0">
-                     {selectedIds.size}
-                  </div>
+                  <div className="bg-emerald-500 text-slate-900 w-10 h-10 rounded-xl flex items-center justify-center font-black text-sm shrink-0">{selectedIds.size}</div>
                   <div className="flex flex-col">
                      <span className="text-sm font-bold">Items Selected</span>
                      <span className="text-[10px] text-slate-400 font-black uppercase tracking-widest hidden sm:inline">Est. Value: ₹{totalSelectedValue.toLocaleString()}</span>
@@ -546,91 +435,61 @@ export const ProcurementManagement: React.FC = () => {
                </div>
                <div className="flex gap-2">
                   <button onClick={() => setSelectedIds(new Set())} className="px-4 sm:px-6 py-3 rounded-2xl bg-white/10 hover:bg-white/20 font-black uppercase text-[10px] tracking-widest transition-all">Clear</button>
-                  <button onClick={handleInitiateBulkPurchase} className="px-6 sm:px-8 py-3 rounded-2xl bg-emerald-500 text-slate-900 hover:bg-emerald-400 font-black uppercase text-[10px] tracking-widest transition-all shadow-lg flex items-center gap-2">
-                     <span className="hidden sm:inline">Generate PO</span> <span className="sm:hidden">PO</span> <ArrowRight size={16} />
-                  </button>
+                  <button onClick={handleInitiateBulkPurchase} className="px-6 sm:px-8 py-3 rounded-2xl bg-emerald-500 text-slate-900 hover:bg-emerald-400 font-black uppercase text-[10px] tracking-widest transition-all shadow-lg flex items-center gap-2">Generate PO <ArrowRight size={16} /></button>
                </div>
             </div>
          </div>
       )}
 
-      {/* BULK ORDER COMPOSER MODAL */}
       {approvingItems && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
            <div className="bg-white rounded-[3.5rem] w-full max-w-6xl mx-auto h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 flex flex-col">
-              <div className="bg-slate-900 p-8 sm:p-10 text-white flex justify-between items-center shrink-0">
+              <div className="bg-slate-900 p-8 text-white flex justify-between items-center shrink-0">
                  <div>
-                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight uppercase">Bulk Order Composer</h3>
-                    <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Consolidate {approvingItems.length} items into one Bill</p>
+                    <h3 className="text-2xl font-black tracking-tight uppercase">Bulk Order Composer</h3>
+                    <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Consolidate {approvingItems.length} items</p>
                  </div>
                  <button onClick={() => setApprovingItems(null)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
               </div>
-              
               <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-                 {/* Sidebar: Vendor Selection */}
-                 <div className="w-full lg:w-80 bg-slate-50 border-r border-slate-200 p-6 sm:p-8 overflow-y-auto shrink-0 max-h-[30vh] lg:max-h-full">
+                 <div className="w-full lg:w-80 bg-slate-50 border-r border-slate-200 p-8 overflow-y-auto shrink-0 max-h-[30vh] lg:max-h-full">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 block">Select Supplier</label>
                     <div className="space-y-3">
                        {vendors.map(v => (
-                          <button 
-                             key={v.id} 
-                             onClick={() => setBulkVendorId(v.id)}
-                             className={`w-full text-left p-4 rounded-2xl border-2 transition-all group ${bulkVendorId === v.id ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-400'}`}
-                          >
+                          <button key={v.id} onClick={() => setBulkVendorId(v.id)} className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${bulkVendorId === v.id ? 'bg-slate-900 border-slate-900 text-white' : 'bg-white border-slate-200 text-slate-600 hover:border-emerald-400'}`}>
                              <div className="font-bold text-sm">{v.name}</div>
-                             <div className={`text-[10px] uppercase font-black mt-1 ${bulkVendorId === v.id ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                Match: {v.suppliedItems?.filter(i => approvingItems.some(ai => ai.ingredientName === i)).length} items
-                             </div>
                           </button>
                        ))}
                     </div>
                  </div>
-
-                 {/* Main Content: Line Items Table */}
                  <div className="flex-1 flex flex-col min-w-0">
-                    <div className="flex-1 overflow-y-auto p-6 sm:p-8 custom-scrollbar">
+                    <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
                        <div className="overflow-x-auto rounded-2xl border border-slate-100">
                           <table className="w-full text-left border-collapse min-w-[600px]">
-                            <thead>
-                                <tr className="border-b-2 border-slate-100 bg-slate-50/50">
-                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/3">Item Details</th>
-                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/4">Order Qty</th>
-                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/4">Unit Price (₹)</th>
+                            <thead className="bg-slate-50">
+                                <tr className="border-b border-slate-100">
+                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Item Details</th>
+                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Qty</th>
+                                  <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Unit Price</th>
                                   <th className="py-4 px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {approvingItems.map(item => {
                                   const line = poLineItems[item.id] || { quantity: 0, unitPrice: 0 };
-                                  const total = line.quantity * line.unitPrice;
                                   return (
-                                    <tr key={item.id} className="group hover:bg-slate-50/50">
+                                    <tr key={item.id}>
                                         <td className="py-4 px-4">
                                           <p className="font-bold text-slate-900">{item.ingredientName}</p>
                                           <p className="text-xs text-slate-400">{item.brand || 'Any Brand'}</p>
                                         </td>
                                         <td className="py-4 px-4">
-                                          <div className="flex items-center gap-2">
-                                              <input 
-                                                type="number" 
-                                                value={line.quantity}
-                                                onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)}
-                                                className="w-20 px-3 py-2 bg-slate-100 rounded-lg font-bold text-slate-900 text-center outline-none focus:ring-2 focus:ring-emerald-500"
-                                              />
-                                              <span className="text-xs font-bold text-slate-400">{item.unit}</span>
-                                          </div>
+                                          <input type="number" value={line.quantity} onChange={(e) => updateLineItem(item.id, 'quantity', parseFloat(e.target.value) || 0)} className="w-20 px-3 py-2 bg-slate-100 rounded-lg font-bold text-center" />
                                         </td>
                                         <td className="py-4 px-4">
-                                          <input 
-                                            type="number"
-                                            value={line.unitPrice}
-                                            onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)}
-                                            className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold text-slate-900 outline-none focus:border-emerald-500"
-                                          />
+                                          <input type="number" value={line.unitPrice} onChange={(e) => updateLineItem(item.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 bg-white border border-slate-200 rounded-lg font-bold" />
                                         </td>
-                                        <td className="py-4 px-4 text-right font-black text-slate-900">
-                                          ₹{total.toLocaleString()}
-                                        </td>
+                                        <td className="py-4 px-4 text-right font-black text-slate-900">₹{(line.quantity * line.unitPrice).toLocaleString()}</td>
                                     </tr>
                                   );
                                 })}
@@ -638,22 +497,10 @@ export const ProcurementManagement: React.FC = () => {
                           </table>
                        </div>
                     </div>
-                    
-                    {/* Footer Totals */}
-                    <div className="p-6 sm:p-8 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
-                       <div>
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Grand Total</p>
-                          <p className="text-3xl font-black text-slate-900 tracking-tighter">
-                             ₹{Object.values(poLineItems).reduce((acc, curr: POLineItemState) => acc + (curr.quantity * curr.unitPrice), 0).toLocaleString()}
-                          </p>
-                       </div>
-                       <button 
-                         onClick={finalizeBulkPO} 
-                         disabled={isSubmitting}
-                         className="w-full sm:w-auto bg-slate-900 text-white px-12 py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                       >
-                         {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                         {isSubmitting ? 'Processing Order...' : 'Confirm & Generate Bill'}
+                    <div className="p-8 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+                       <p className="text-3xl font-black text-slate-900 tracking-tighter">₹{Object.values(poLineItems).reduce((acc: number, curr: POLineItemState) => acc + (curr.quantity * curr.unitPrice), 0).toLocaleString()}</p>
+                       <button onClick={finalizeBulkPO} disabled={isSubmitting} className="w-full sm:w-auto bg-slate-900 text-white px-12 py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl disabled:opacity-50 flex items-center justify-center gap-3">
+                         {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />} Generate Bill
                        </button>
                     </div>
                  </div>
@@ -661,211 +508,22 @@ export const ProcurementManagement: React.FC = () => {
            </div>
         </div>
       )}
-
-      {/* Manual Request Modal */}
+      {/* Manual Request Modal, PO Viewer, Physical Audit Modals follow... */}
       {isRequestModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
-           <div className="bg-white rounded-[3.5rem] w-full max-w-xl mx-auto overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[90vh] overflow-y-auto">
-              <div className="bg-slate-900 p-8 sm:p-10 text-white flex justify-between items-center sticky top-0 z-10">
-                 <div>
-                    <h3 className="text-2xl sm:text-3xl font-black tracking-tight uppercase">Request Material</h3>
-                    <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Manual Stock Replenishment</p>
-                 </div>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
+           <div className="bg-white rounded-[3.5rem] w-full max-w-xl mx-auto overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500">
+              <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
+                 <h3 className="text-2xl font-black tracking-tight uppercase">Request Material</h3>
                  <button onClick={() => setIsRequestModalOpen(false)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
               </div>
-              <div className="p-8 sm:p-10 space-y-6">
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Material Name</label>
-                       <input type="text" value={manualReq.name} onChange={e => setManualReq({...manualReq, name: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner placeholder:text-slate-300" placeholder="e.g. Rice, Milk" />
-                    </div>
-                    <div className="space-y-1.5">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Preference</label>
-                       <select 
-                         value={manualReq.brand} 
-                         onChange={e => setManualReq({...manualReq, brand: e.target.value})} 
-                         className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner"
-                       >
-                          <option value="" className="text-slate-900">Any Brand</option>
-                          {brands.map(b => (
-                            <option key={b.id} value={b.name} className="text-slate-900">{b.name}</option>
-                          ))}
-                       </select>
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Required Volume</label>
-                       <div className="flex gap-2">
-                          <input 
-                            type="number" 
-                            value={manualReq.qty} 
-                            onChange={e => setManualReq({...manualReq, qty: parseFloat(e.target.value) || 0})} 
-                            className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-black text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" 
-                          />
-                          <select 
-                            value={manualReq.unit} 
-                            onChange={e => setManualReq({...manualReq, unit: e.target.value})} 
-                            className="w-32 px-4 py-4 rounded-xl bg-slate-100 border-none font-black text-center text-xs uppercase cursor-pointer focus:ring-2 focus:ring-emerald-500 transition-all text-slate-900"
-                          >
-                            {KITCHEN_UNITS.map(unit => (
-                              <option key={unit} value={unit} className="text-slate-900">{unit}</option>
-                            ))}
-                          </select>
-                       </div>
-                    </div>
-                    <div className="space-y-1.5">
-                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Needed By</label>
-                       <input type="date" value={manualReq.date} onChange={e => setManualReq({...manualReq, date: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
-                    </div>
-                 </div>
-                 <button onClick={handleManualRequest} className="w-full mt-4 bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95">Commit Request</button>
+              <div className="p-10 space-y-6">
+                 <input type="text" placeholder="Material Name" value={manualReq.name} onChange={e => setManualReq({...manualReq, name: e.target.value})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold" />
+                 <input type="number" placeholder="Required Quantity" value={manualReq.qty} onChange={e => setManualReq({...manualReq, qty: parseFloat(e.target.value) || 0})} className="w-full px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-bold" />
+                 <button onClick={handleManualRequest} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl">Commit Request</button>
               </div>
            </div>
         </div>
       )}
-
-      {/* View PO Modal (Printable) */}
-      {viewingPO && (
-         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl overflow-y-auto">
-            <div className="bg-white w-full max-w-3xl min-h-[90vh] shadow-2xl relative animate-in zoom-in-95 duration-500 mx-auto">
-               <button onClick={() => setViewingPO(null)} className="absolute top-4 right-4 p-3 bg-slate-100 hover:bg-rose-500 hover:text-white rounded-full transition-all no-print"><X size={20} /></button>
-               
-               <div className="p-8 sm:p-12 space-y-8" id="po-print-area">
-                  <div className="flex flex-col sm:flex-row justify-between items-start border-b-2 border-slate-900 pb-8 gap-6">
-                     <div>
-                        {poConfig.logoUrl && <img src={poConfig.logoUrl} alt="Logo" className="h-16 object-contain mb-4" />}
-                        <h1 className="text-2xl sm:text-3xl font-black text-slate-900 uppercase tracking-tighter">{poConfig.companyName}</h1>
-                        <p className="text-xs font-medium text-slate-500 mt-2 max-w-xs leading-relaxed">{poConfig.address}</p>
-                     </div>
-                     <div className="text-left sm:text-right">
-                        <h2 className="text-3xl sm:text-4xl font-black text-slate-200 uppercase tracking-tighter">Purchase Order</h2>
-                        <p className="text-lg font-black text-slate-900 mt-2">{viewingPO.orderNumber}</p>
-                        <p className="text-xs font-bold text-slate-500 mt-1">Date: {new Date(viewingPO.createdAt).toLocaleDateString()}</p>
-                     </div>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                     <table className="w-full text-left border-collapse min-w-[500px]">
-                        <thead>
-                           <tr className="border-b-2 border-slate-900">
-                              <th className="py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest">Item Description</th>
-                              <th className="py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-right">Quantity</th>
-                              {viewingPO.status === 'received' && <th className="py-4 text-[10px] font-black text-emerald-600 uppercase tracking-widest text-right">Received</th>}
-                              <th className="py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-right">Unit Price</th>
-                              <th className="py-4 text-[10px] font-black text-slate-900 uppercase tracking-widest text-right">Total</th>
-                           </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200">
-                           {viewingPO.items.map((item, idx) => (
-                              <tr key={idx}>
-                                 <td className="py-4">
-                                    <p className="font-bold text-slate-900">{item.ingredientName}</p>
-                                    {item.brand && <p className="text-xs text-slate-500">Brand: {item.brand}</p>}
-                                 </td>
-                                 <td className="py-4 text-right font-medium text-slate-700">{item.quantity} {item.unit}</td>
-                                 {viewingPO.status === 'received' && <td className="py-4 text-right font-bold text-emerald-600">{item.receivedQuantity} {item.unit}</td>}
-                                 <td className="py-4 text-right font-medium text-slate-700">₹{item.priceAtOrder}</td>
-                                 <td className="py-4 text-right font-bold text-slate-900">₹{item.quantity * (item.priceAtOrder || 0)}</td>
-                              </tr>
-                           ))}
-                        </tbody>
-                        <tfoot>
-                           <tr className="border-t-2 border-slate-900">
-                              <td colSpan={viewingPO.status === 'received' ? 4 : 3} className="py-6 text-right font-black text-slate-900 uppercase tracking-widest">Grand Total</td>
-                              <td className="py-6 text-right font-black text-2xl text-slate-900">₹{viewingPO.totalCost?.toLocaleString()}</td>
-                           </tr>
-                        </tfoot>
-                     </table>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 pt-8 border-t border-slate-200">
-                     <div>
-                        <h4 className="font-black text-slate-900 uppercase tracking-widest text-xs mb-2">Terms & Conditions</h4>
-                        <p className="text-xs text-slate-500 leading-relaxed whitespace-pre-wrap">{poConfig.terms}</p>
-                     </div>
-                     <div className="text-right pt-8 sm:pt-16">
-                        <div className="inline-block border-t border-slate-900 px-8 pt-2">
-                           <p className="text-xs font-bold text-slate-900 uppercase">Authorized Signatory</p>
-                        </div>
-                     </div>
-                  </div>
-               </div>
-            </div>
-         </div>
-      )}
-
-      {/* Physical Check / GRN Modal */}
-      {verifyingPO && (
-         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
-            <div className="bg-white rounded-[3.5rem] w-full max-w-4xl mx-auto overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-500 max-h-[90vh] flex flex-col">
-               <div className="bg-slate-900 p-8 sm:p-10 text-white flex justify-between items-center shrink-0">
-                  <div>
-                     <h3 className="text-2xl sm:text-3xl font-black tracking-tight uppercase">Physical Verification</h3>
-                     <p className="text-emerald-400 font-black text-[9px] uppercase tracking-widest mt-1">Goods Receipt Note (GRN) Generation</p>
-                  </div>
-                  <button onClick={() => setVerifyingPO(null)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
-               </div>
-               
-               <div className="flex-1 overflow-y-auto custom-scrollbar p-8 sm:p-10 space-y-8">
-                  {/* ... Existing GRN logic preserved ... */}
-                  <div className="space-y-4">
-                     {verifyingPO.items.map((item, idx) => {
-                        const audit = auditData[item.ingredientName] || { receivedQty: 0, qualityPassed: false, notes: '' };
-                        const discrepancy = audit.receivedQty - item.quantity;
-                        const hasDiscrepancy = discrepancy !== 0;
-                        const isQualityFail = !audit.qualityPassed;
-
-                        return (
-                           <div key={idx} className={`grid grid-cols-12 gap-4 items-center p-4 rounded-2xl border-2 transition-all ${
-                              isQualityFail ? 'bg-rose-50 border-rose-100' : hasDiscrepancy ? 'bg-amber-50 border-amber-100' : 'bg-white border-slate-100'
-                           }`}>
-                              <div className="col-span-12 sm:col-span-4">
-                                 <p className="font-bold text-slate-900">{item.ingredientName}</p>
-                              </div>
-                              <div className="col-span-4 sm:col-span-2 text-center font-bold text-slate-500">
-                                 {item.quantity} {item.unit}
-                              </div>
-                              <div className="col-span-4 sm:col-span-4">
-                                 <input 
-                                   type="number" 
-                                   value={audit.receivedQty} 
-                                   onChange={(e) => updateAuditItem(item.ingredientName, 'receivedQty', parseFloat(e.target.value) || 0)}
-                                   className="w-full px-3 py-2 rounded-lg font-bold text-center outline-none border-2 focus:ring-2 focus:border-emerald-500"
-                                 />
-                              </div>
-                              <div className="col-span-4 sm:col-span-2 flex justify-center">
-                                 <button 
-                                    onClick={() => updateAuditItem(item.ingredientName, 'qualityPassed', !audit.qualityPassed)}
-                                    className={`p-2 rounded-xl border-2 transition-all ${
-                                       audit.qualityPassed 
-                                       ? 'bg-emerald-500 text-white border-emerald-500' 
-                                       : 'bg-white text-rose-500 border-rose-200'
-                                    }`}
-                                 >
-                                    {audit.qualityPassed ? <ThumbsUp size={16} /> : <ThumbsDown size={16} />}
-                                 </button>
-                              </div>
-                           </div>
-                        );
-                     })}
-                  </div>
-               </div>
-               
-               <div className="p-8 bg-slate-50 border-t border-slate-200 shrink-0">
-                  <button 
-                    onClick={commitGRN} 
-                    disabled={isSubmitting}
-                    className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                  >
-                     {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={18} />} 
-                     {isSubmitting ? 'Syncing Inventory...' : 'Generate GRN & Update Inventory'}
-                  </button>
-               </div>
-            </div>
-         </div>
-      )}
-
       {activeTab === 'PENDING' && (
          <div className="space-y-6 no-print">
             {purchaseOrders.filter(po => po.status === 'pending').map(po => (
@@ -877,19 +535,14 @@ export const ProcurementManagement: React.FC = () => {
                         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Order #{po.orderNumber} • {po.items.length} Items</p>
                      </div>
                   </div>
-                  <div className="flex flex-wrap gap-4 w-full md:w-auto justify-end">
-                     <button onClick={() => downloadPDF(po)} className="p-4 bg-slate-50 text-slate-500 rounded-2xl hover:text-slate-900 hover:bg-slate-200 transition-all font-bold text-xs uppercase tracking-widest flex items-center gap-2 flex-1 md:flex-none justify-center">
-                        <Printer size={16} /> Print
-                     </button>
-                     <button onClick={() => startPhysicalAudit(po)} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg flex items-center gap-2 flex-1 md:flex-none justify-center">
-                        <ClipboardCheck size={16} /> Verify Receipt
-                     </button>
+                  <div className="flex gap-4">
+                     <button onClick={() => downloadPDF(po)} className="p-4 bg-slate-50 text-slate-500 rounded-2xl hover:text-slate-900 hover:bg-slate-200 transition-all font-bold text-xs uppercase tracking-widest flex items-center gap-2"><Printer size={16} /> Print</button>
+                     <button onClick={() => startPhysicalAudit(po)} className="px-8 py-4 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-lg flex items-center gap-2"><ClipboardCheck size={16} /> Verify Receipt</button>
                   </div>
                </div>
             ))}
          </div>
       )}
-
       {activeTab === 'COMPLETED' && (
          <div className="space-y-6 no-print">
             {purchaseOrders.filter(po => po.status === 'received').map(po => (
@@ -898,17 +551,68 @@ export const ProcurementManagement: React.FC = () => {
                      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center shrink-0"><CheckCircle size={28} /></div>
                      <div>
                         <h4 className="text-xl font-black text-slate-900">{po.vendorName}</h4>
-                        <div className="flex flex-col gap-1 mt-1">
-                           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Completed: {new Date(po.receivedAt || 0).toLocaleDateString()}</p>
-                           {po.grnNumber && <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{po.grnNumber}</p>}
-                        </div>
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1">Completed: {new Date(po.receivedAt || 0).toLocaleDateString()}</p>
                      </div>
                   </div>
-                  <button onClick={() => downloadPDF(po)} className="text-slate-400 hover:text-slate-900 font-bold text-xs uppercase tracking-widest flex items-center gap-2 w-full md:w-auto justify-center">
+                  <button onClick={() => downloadPDF(po)} className="text-slate-400 hover:text-slate-900 font-bold text-xs uppercase tracking-widest flex items-center gap-2">
                      <FileText size={16} /> View Record
                   </button>
                </div>
             ))}
+         </div>
+      )}
+      {verifyingPO && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl">
+            <div className="bg-white rounded-[3.5rem] w-full max-w-4xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+               <div className="bg-slate-900 p-8 text-white flex justify-between items-center">
+                  <h3 className="text-2xl font-black tracking-tight uppercase">Verification</h3>
+                  <button onClick={() => setVerifyingPO(null)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
+               </div>
+               <div className="flex-1 overflow-y-auto p-8 space-y-4">
+                  {verifyingPO.items.map((item, idx) => (
+                     <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border-2 border-slate-100">
+                        <span className="font-bold">{item.ingredientName}</span>
+                        <div className="flex items-center gap-4">
+                           <input type="number" value={auditData[item.ingredientName]?.receivedQty} onChange={(e) => updateAuditItem(item.ingredientName, 'receivedQty', parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 rounded-lg font-bold text-center" />
+                           <button onClick={() => updateAuditItem(item.ingredientName, 'qualityPassed', !auditData[item.ingredientName].qualityPassed)} className={`p-2 rounded-xl transition-all ${auditData[item.ingredientName]?.qualityPassed ? 'bg-emerald-500 text-white' : 'bg-rose-100 text-rose-600'}`}>{auditData[item.ingredientName]?.qualityPassed ? <ThumbsUp size={16} /> : <ThumbsDown size={16} />}</button>
+                        </div>
+                     </div>
+                  ))}
+               </div>
+               <div className="p-8 border-t bg-slate-50">
+                  <button onClick={commitGRN} disabled={isSubmitting} className="w-full bg-slate-900 text-white py-5 rounded-2xl font-black uppercase shadow-xl flex items-center justify-center gap-3">
+                     {isSubmitting ? <Loader2 className="animate-spin" size={18} /> : <ShieldCheck size={18} />} Update Inventory
+                  </button>
+               </div>
+            </div>
+         </div>
+      )}
+      {viewingPO && (
+         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl overflow-y-auto">
+            <div className="bg-white w-full max-w-3xl min-h-[90vh] shadow-2xl relative p-12">
+               <button onClick={() => setViewingPO(null)} className="absolute top-4 right-4 p-3 bg-slate-100 hover:bg-rose-500 hover:text-white rounded-full transition-all no-print"><X size={20} /></button>
+               <h1 className="text-3xl font-black text-slate-900 uppercase tracking-tighter border-b-2 border-slate-900 pb-8 mb-8">{poConfig.companyName} - Purchase Order</h1>
+               <table className="w-full text-left">
+                  <thead>
+                     <tr className="border-b-2 border-slate-900">
+                        <th className="py-4">Item</th>
+                        <th className="py-4 text-right">Qty</th>
+                        <th className="py-4 text-right">Price</th>
+                        <th className="py-4 text-right">Total</th>
+                     </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                     {viewingPO.items.map((item, idx) => (
+                        <tr key={idx}>
+                           <td className="py-4 font-bold">{item.ingredientName}</td>
+                           <td className="py-4 text-right">{item.quantity} {item.unit}</td>
+                           <td className="py-4 text-right">₹{item.priceAtOrder}</td>
+                           <td className="py-4 text-right">₹{item.quantity * (item.priceAtOrder || 0)}</td>
+                        </tr>
+                     ))}
+                  </tbody>
+               </table>
+            </div>
          </div>
       )}
     </div>

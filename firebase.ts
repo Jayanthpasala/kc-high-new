@@ -6,8 +6,9 @@ import {
 } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
+// Updated with the user's latest credentials
 const firebaseConfig = {
-  apiKey: "AIzaSyDcznITN8srAO2jc9iUJCBLU6nhMSgxFkQ",
+  apiKey: "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA",
   authDomain: "aestrytfyguh.firebaseapp.com",
   projectId: "aestrytfyguh",
   storageBucket: "aestrytfyguh.appspot.com",
@@ -22,7 +23,7 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// 🔥 THIS FIXES LOGIN STUCK AFTER REFRESH
+// Persist user sessions across refreshes
 setPersistence(auth, browserLocalPersistence)
   .then(() => {
     console.log("Firebase auth persistence set to LOCAL");

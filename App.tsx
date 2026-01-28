@@ -39,6 +39,22 @@ const App: React.FC = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
+    // Check for Demo Mode Flag
+    if (localStorage.getItem('kms_demo_mode') === 'true') {
+        const mockUser: any = { uid: 'demo-user', email: 'chef@demo.local', displayName: 'Demo Chef', photoURL: null };
+        const mockProfile: UserProfile = {
+            uid: 'demo-user',
+            email: 'chef@demo.local',
+            role: 'owner',
+            displayName: 'Demo Chef',
+            createdAt: Date.now()
+        };
+        setUser(mockUser);
+        setProfile(mockProfile);
+        setAuthLoading(false);
+        return; // Skip Firebase Listener
+    }
+
     const timeout = setTimeout(() => setAuthLoading(false), 5000);
 
     const unsub = onAuthStateChanged(auth, async (currentUser) => {
@@ -136,6 +152,11 @@ const App: React.FC = () => {
       <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-64'}`}>
         <Header activePage={activePage} isSidebarCollapsed={isSidebarCollapsed} onMenuClick={() => setIsMobileMenuOpen(true)} />
         <main className="flex-1 mt-16 px-4 sm:px-6 lg:px-8 py-8 w-full max-w-7xl mx-auto">
+          {localStorage.getItem('kms_demo_mode') === 'true' && (
+             <div className="bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-widest px-4 py-2 text-center mb-6 rounded-lg border border-amber-200">
+                Demo Mode Active - Changes are local only
+             </div>
+          )}
           <ErrorBoundary>
             {renderContent()}
           </ErrorBoundary>

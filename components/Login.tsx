@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { auth } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { ChefHat, Loader2, LogIn, ShieldCheck, Lock } from 'lucide-react';
+import { ChefHat, Loader2, LogIn, ShieldCheck, Lock, PlayCircle, AlertTriangle } from 'lucide-react';
 
 export const Login: React.FC = () => {
   const [email, setEmail] = useState('');
@@ -16,15 +16,38 @@ export const Login: React.FC = () => {
     setError('');
     
     try {
+      console.log("Attempting login for:", email);
       await signInWithEmailAndPassword(auth, email, password);
+      console.log("Login successful");
     } catch (err: any) {
+      console.error("Login Error Full:", err);
       let msg = 'Authentication failed. Please check your credentials.';
-      if (err.code === 'auth/user-not-found') msg = 'Identity not found. Contact administrator.';
-      if (err.code === 'auth/wrong-password') msg = 'Invalid access protocol (password).';
+      const errString = err.toString();
+
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        msg = 'Account not found or password incorrect.';
+      } else if (err.code === 'auth/wrong-password') {
+        msg = 'Invalid password provided.';
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = 'Too many failed attempts. Try again later.';
+      } else if (errString.includes('requests-to-this-api') && errString.includes('blocked')) {
+        // Updated message to reflect Referrer restrictions
+        msg = 'ACCESS BLOCKED: You have API Restrictions enabled. 1. Go to Google Cloud Console > Credentials. 2. Edit API Key. 3. Under "Application restrictions", add "localhost" and "127.0.0.1" (or your specific domain) to the "Websites" list.';
+      } else if (err.code === 'auth/operation-not-allowed') {
+        msg = 'CONFIG ERROR: Go to Firebase Console > Authentication > Sign-in method and enable "Email/Password".';
+      } else if (err.message) {
+        msg = `System Error: ${err.message}`;
+      }
+
       setError(msg);
     } finally {
       setLoading(false);
     }
+  };
+
+  const enterDemoMode = () => {
+      localStorage.setItem('kms_demo_mode', 'true');
+      window.location.reload();
   };
 
   return (
@@ -44,7 +67,8 @@ export const Login: React.FC = () => {
 
         <form onSubmit={handleAuth} className="p-10 space-y-6">
           {error && (
-            <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[11px] font-black uppercase tracking-widest text-center animate-shake">
+            <div className="p-4 bg-rose-50 border border-rose-100 rounded-2xl text-rose-600 text-[10px] font-black uppercase tracking-widest text-center animate-shake break-words flex flex-col items-center gap-2">
+              <AlertTriangle size={20} />
               {error}
             </div>
           )}
@@ -86,7 +110,21 @@ export const Login: React.FC = () => {
             Initialize Session
           </button>
 
-          <div className="pt-4 text-center">
+          <div className="relative flex py-2 items-center">
+            <div className="flex-grow border-t border-slate-100"></div>
+            <span className="flex-shrink-0 mx-4 text-slate-300 text-[9px] font-black uppercase tracking-widest">Or</span>
+            <div className="flex-grow border-t border-slate-100"></div>
+          </div>
+
+          <button 
+            type="button" 
+            onClick={enterDemoMode}
+            className="w-full bg-slate-100 text-slate-500 py-4 rounded-2xl font-black uppercase tracking-widest text-[10px] flex items-center justify-center gap-2 hover:bg-slate-200 hover:text-slate-900 transition-all active:scale-95"
+          >
+            <PlayCircle size={16} /> Enter Demo Mode
+          </button>
+
+          <div className="pt-2 text-center">
              <div className="flex items-center justify-center gap-2 text-slate-300">
                <Lock size={12} />
                <p className="text-[9px] font-black uppercase tracking-[0.2em]">Authorized Personnel Only</p>

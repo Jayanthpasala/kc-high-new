@@ -83,32 +83,8 @@ export const InventoryManagement: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      // 1. Try to get Key from Environment or LocalStorage
-      let apiKey = process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY');
-
-      // 2. If missing, attempt to use the built-in AI Studio helper
-      if (!apiKey && (window as any).aistudio) {
-        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
-        if (!hasKey) {
-            await (window as any).aistudio.openSelectKey();
-        }
-      }
-
-      // 3. Last Resort: Ask User Directly
-      if (!apiKey && !process.env.API_KEY) {
-         const userKey = prompt("Gemini AI Key is required for this feature.\n\nPlease enter your API Key (from aistudio.google.com):");
-         if (userKey) {
-             localStorage.setItem('GEMINI_API_KEY', userKey.trim());
-             apiKey = userKey.trim();
-             // Update process.env for this session
-             window.process.env.API_KEY = userKey.trim();
-         } else {
-             alert("Operation cancelled. API Key is required to scan lists.");
-             setIsProcessing(false);
-             e.target.value = '';
-             return;
-         }
-      }
+      // Fix: Strictly rely on process.env.API_KEY as per the GenAI guidelines.
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
       let promptText = `Extract inventory items from this file. Return a JSON array of objects with these properties:
       - name (string): Item name
@@ -137,7 +113,6 @@ export const InventoryManagement: React.FC = () => {
         ];
       }
 
-      const ai = new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: { parts },

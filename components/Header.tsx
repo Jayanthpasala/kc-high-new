@@ -14,7 +14,16 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, onMenuClick }) => {
   const currentPage = NAV_ITEMS.find(item => item.id === activePage);
-  const user = auth.currentUser;
+  const user = auth.currentUser || (localStorage.getItem('kms_demo_mode') === 'true' ? { displayName: 'Demo Chef', email: 'demo@local' } : null);
+
+  const handleLogout = async () => {
+      if (localStorage.getItem('kms_demo_mode') === 'true') {
+          localStorage.removeItem('kms_demo_mode');
+          window.location.reload();
+      } else {
+          await signOut(auth);
+      }
+  };
 
   return (
     <header 
@@ -56,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ activePage, isSidebarCollapsed, 
               <p className="text-[10px] font-black uppercase text-slate-400 mt-1 tracking-widest">Authorized Staff</p>
             </div>
             <button 
-              onClick={() => signOut(auth)}
+              onClick={handleLogout}
               className="p-2 text-slate-300 hover:text-rose-500 transition-colors"
               title="End Session"
             >
