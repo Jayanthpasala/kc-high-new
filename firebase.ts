@@ -1,5 +1,4 @@
-
-import * as firebaseApp from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getAuth, 
   setPersistence, 
@@ -8,7 +7,7 @@ import {
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAwps0sHc_Ys1Aj5ABWGxJQRhA0VrUjIuA",
+  apiKey: "AIzaSyDcznITN8srAO2jc9iUJCBLU6nhMSgxFkQ",
   authDomain: "aestrytfyguh.firebaseapp.com",
   projectId: "aestrytfyguh",
   storageBucket: "aestrytfyguh.appspot.com",
@@ -18,7 +17,7 @@ const firebaseConfig = {
 };
 
 // Ensure Firebase initializes only once
-const app = firebaseApp.getApps().length === 0 ? firebaseApp.initializeApp(firebaseConfig) : firebaseApp.getApp();
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);

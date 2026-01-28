@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -27,17 +28,29 @@
     </style>
 
     <script>
-      window.process = { env: { API_KEY: "" } };
+      // Robust Shim for process.env
+      window.process = window.process || {};
+      window.process.env = window.process.env || {};
+      
+      // Inject the user-provided API Key
+      window.process.env.API_KEY = "AIzaSyDcznITN8srAO2jc9iUJCBLU6nhMSgxFkQ";
+
+      // Also check localStorage as a fallback override
+      if (localStorage.getItem("GEMINI_API_KEY")) {
+          window.process.env.API_KEY = localStorage.getItem("GEMINI_API_KEY");
+      }
 
       window.addEventListener('error', (e) => {
         console.error('System Failure:', e.message);
         const root = document.getElementById('root');
+        // Only show full screen error if app hasn't loaded yet
         if (root && root.innerHTML.includes('System Booting')) {
           root.innerHTML = `
             <div style="padding: 40px; font-family: sans-serif; text-align: center; height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #0f172a; color: white;">
               <h1 style="color: #ef4444; font-size: 24px; font-weight: 900; margin-bottom: 8px;">BOOT SEQUENCE INTERRUPTED</h1>
               <p style="color: #94a3b8; font-size: 14px; margin-bottom: 24px; max-width: 450px; line-height: 1.6;">
-                Error: ${e.message}
+                Error: ${e.message}<br/>
+                <span style="font-size:10px; opacity:0.7;">Check console for importmap errors.</span>
               </p>
               <button onclick="window.location.reload()" style="padding: 14px 28px; background: #10b981; color: #0f172a; border: none; border-radius: 12px; font-weight: 900; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; font-size: 12px;">Re-initialize System</button>
             </div>
@@ -46,19 +59,18 @@
       });
     </script>
 
-    <!-- ONLY importmap loaded from external file -->
+    <!-- Load dependencies from external map only -->
     <script type="importmap" src="./importmap.json"></script>
-
 <script type="importmap">
 {
   "imports": {
-    "react/": "https://esm.sh/react@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
+    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0",
+    "react/": "https://esm.sh/react@^19.2.4/",
     "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
     "firebase/": "https://esm.sh/firebase@^12.8.0/",
-    "@google/genai": "https://esm.sh/@google/genai@^1.38.0",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.13.0"
+    "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
   }
 }
 </script>
@@ -75,7 +87,3 @@
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>
-
-
-
-

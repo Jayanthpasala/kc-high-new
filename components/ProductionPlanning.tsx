@@ -270,12 +270,34 @@ export const ProductionPlanning: React.FC = () => {
     if (!file) return;
     setIsProcessing(true);
     try {
-      // Ensure API Key is available via user selection
-      if ((window as any).aistudio) {
+      // 1. Try to get Key from Environment or LocalStorage
+      let apiKey = process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY');
+
+      // 2. If missing, attempt to use the built-in AI Studio helper (Project IDX/etc)
+      if (!apiKey && (window as any).aistudio) {
         const hasKey = await (window as any).aistudio.hasSelectedApiKey();
         if (!hasKey) {
             await (window as any).aistudio.openSelectKey();
         }
+        // Re-read env after potential selection (though Shim handles it on reload, we need it now)
+        // Note: process.env won't update dynamically without page reload in most shims, 
+        // so we assume the user selected it and proceed or reload.
+      }
+
+      // 3. Last Resort: Ask User Directly
+      if (!apiKey && !process.env.API_KEY) {
+         const userKey = prompt("Gemini AI Key is required for this feature.\n\nPlease enter your API Key (from aistudio.google.com):");
+         if (userKey) {
+             localStorage.setItem('GEMINI_API_KEY', userKey.trim());
+             apiKey = userKey.trim();
+             // Update process.env for this session
+             window.process.env.API_KEY = userKey.trim();
+         } else {
+             alert("Operation cancelled. API Key is required to scan menus.");
+             setIsProcessing(false);
+             e.target.value = '';
+             return;
+         }
       }
 
       const reader = new FileReader();
@@ -284,7 +306,7 @@ export const ProductionPlanning: React.FC = () => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]);
       });
       
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-pro-preview',
         contents: [

@@ -83,15 +83,34 @@ export const InventoryManagement: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      // Ensure API Key is available
-      if ((window as any).aistudio) {
+      // 1. Try to get Key from Environment or LocalStorage
+      let apiKey = process.env.API_KEY || localStorage.getItem('GEMINI_API_KEY');
+
+      // 2. If missing, attempt to use the built-in AI Studio helper
+      if (!apiKey && (window as any).aistudio) {
         const hasKey = await (window as any).aistudio.hasSelectedApiKey();
         if (!hasKey) {
             await (window as any).aistudio.openSelectKey();
         }
       }
 
-      let prompt = `Extract inventory items from this file. Return a JSON array of objects with these properties:
+      // 3. Last Resort: Ask User Directly
+      if (!apiKey && !process.env.API_KEY) {
+         const userKey = prompt("Gemini AI Key is required for this feature.\n\nPlease enter your API Key (from aistudio.google.com):");
+         if (userKey) {
+             localStorage.setItem('GEMINI_API_KEY', userKey.trim());
+             apiKey = userKey.trim();
+             // Update process.env for this session
+             window.process.env.API_KEY = userKey.trim();
+         } else {
+             alert("Operation cancelled. API Key is required to scan lists.");
+             setIsProcessing(false);
+             e.target.value = '';
+             return;
+         }
+      }
+
+      let promptText = `Extract inventory items from this file. Return a JSON array of objects with these properties:
       - name (string): Item name
       - quantity (number): Current stock amount
       - unit (string): Unit of measure (e.g., kg, L, pcs)
@@ -104,7 +123,7 @@ export const InventoryManagement: React.FC = () => {
       
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
         const text = await file.text();
-        parts = [{ text: prompt + `\n\nCSV DATA:\n${text}` }];
+        parts = [{ text: promptText + `\n\nCSV DATA:\n${text}` }];
       } else {
         // Image or PDF
         const reader = new FileReader();
@@ -114,11 +133,11 @@ export const InventoryManagement: React.FC = () => {
         });
         parts = [
            { inlineData: { data: base64, mimeType: file.type } },
-           { text: prompt }
+           { text: promptText }
         ];
       }
 
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY });
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: { parts },
@@ -379,7 +398,7 @@ export const InventoryManagement: React.FC = () => {
                               <input 
                                 type="number" 
                                 value={item.quantity} 
-                                onChange={(e) => updateImportItem(idx, 'quantity', parseFloat(e.target.value))}
+                                onChange={(e) => updateImportItem(idx, 'quantity', parseFloat(e.target.value) || 0)}
                                 className="w-20 text-right font-black text-slate-900 border-none focus:ring-0 p-0"
                               />
                               <input 

@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect } from 'react';
 import { db, auth } from '../firebase';
 import { collection, onSnapshot, updateDoc, doc, query, orderBy, setDoc, deleteDoc } from 'firebase/firestore';
-import * as firebaseApp from 'firebase/app';
+import { initializeApp, deleteApp } from 'firebase/app';
 import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { UserProfile, UserRole } from '../types';
 import { Users, ShieldCheck, UserCog, Mail, Calendar, Search, Loader2, AlertCircle, Trash2, PlusCircle, X, Key, ShieldPlus } from 'lucide-react';
@@ -76,7 +75,7 @@ export const UserManagement: React.FC = () => {
     };
 
     const secondaryAppName = `ProvisioningApp-${Date.now()}`;
-    const secondaryApp = firebaseApp.initializeApp(secondaryConfig, secondaryAppName);
+    const secondaryApp = initializeApp(secondaryConfig, secondaryAppName);
     const secondaryAuth = getAuth(secondaryApp);
 
     try {
@@ -95,7 +94,7 @@ export const UserManagement: React.FC = () => {
       
       // Cleanup the secondary session to prevent session leak
       await signOut(secondaryAuth);
-      await firebaseApp.deleteApp(secondaryApp);
+      await deleteApp(secondaryApp);
 
       alert(`Staff Provisioned: Credentials for ${newStaffName} active.`);
       setIsProvisionModalOpen(false);
@@ -106,7 +105,7 @@ export const UserManagement: React.FC = () => {
     } catch (err: any) {
       alert(`Provisioning Error: ${err.message}`);
       // Ensure cleanup even on error
-      try { await firebaseApp.deleteApp(secondaryApp); } catch {}
+      try { await deleteApp(secondaryApp); } catch {}
     } finally {
       setIsProvisioning(false);
     }
