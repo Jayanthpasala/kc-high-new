@@ -23,6 +23,7 @@
         ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
         ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
         @media print { .no-print { display: none !important; } }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 
     <script>
@@ -45,15 +46,15 @@
       });
     </script>
 
-    <!-- ONLY ONE IMPORTMAP — loaded from external file -->
+    <!-- ONLY importmap loaded from external file -->
     <script type="importmap" src="./importmap.json"></script>
 
 <script type="importmap">
 {
   "imports": {
+    "react/": "https://esm.sh/react@^19.2.4/",
     "react": "https://esm.sh/react@^19.2.4",
     "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "react/": "https://esm.sh/react@^19.2.4/",
     "lucide-react": "https://esm.sh/lucide-react@^0.563.0",
     "firebase/": "https://esm.sh/firebase@^12.8.0/",
     "@google/genai": "https://esm.sh/@google/genai@^1.38.0"
@@ -70,10 +71,10 @@
         </div>
     </div>
 
-    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
-
     <script type="module" src="./index.tsx"></script>
 </body>
 </html>
+
+
 
 
