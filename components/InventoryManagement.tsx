@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Package, Search, AlertTriangle, CheckCircle2, Edit3, Trash2, X, PlusCircle, Scale, RefreshCcw, FileText, Loader2, TrendingUp, Banknote, Database, Tag, Truck, Upload, ArrowRight
+  Package, Search, AlertTriangle, CheckCircle2, Edit3, Trash2, X, PlusCircle, Scale, RefreshCcw, FileText, Loader2, TrendingUp, Banknote, Database, Tag, Truck, Upload, ArrowRight, ShieldAlert
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { InventoryItem, Brand } from '../types';
@@ -23,7 +23,14 @@ export const InventoryManagement: React.FC = () => {
   const [syncing, setSyncing] = useState(true);
   
   const INITIAL_FORM_STATE: Partial<InventoryItem> = {
-    name: '', brand: '', category: 'Produce', quantity: 0, unit: 'kg', reorderLevel: 0, supplier: '', lastPrice: 0
+    name: '', 
+    brand: '', 
+    category: 'Produce', 
+    quantity: 0, 
+    unit: 'kg', 
+    reorderLevel: 5, 
+    supplier: '', 
+    lastPrice: 0
   };
 
   const [formData, setFormData] = useState<Partial<InventoryItem>>(INITIAL_FORM_STATE);
@@ -52,9 +59,16 @@ export const InventoryManagement: React.FC = () => {
 
   const handleSave = async () => {
     if (!formData.name) return alert('Name is mandatory.');
+    if (!formData.brand) return alert('Brand specification is mandatory for accurate estimation.');
+    
     const currentReserved = editingItem?.reserved || 0;
     const status = getStatus(formData.quantity || 0, formData.reorderLevel || 0, currentReserved);
-    const dataToSave = { ...formData, status, lastRestocked: new Date().toISOString().split('T')[0], reserved: currentReserved };
+    const dataToSave = { 
+      ...formData, 
+      status, 
+      lastRestocked: new Date().toISOString().split('T')[0], 
+      reserved: currentReserved 
+    };
 
     try {
       if (editingItem) {
@@ -72,16 +86,11 @@ export const InventoryManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        alert("System Configuration Error: API Key missing from environment.");
-        return;
-    }
-
     setIsProcessing(true);
     try {
+      // Fix: Use process.env.API_KEY directly for initializing GoogleGenAI.
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      let promptText = `Extract inventory items from this file. Return a JSON array of objects with name, quantity, unit, lastPrice, brand, and category.`;
+      let promptText = `Extract inventory items from this file. Return a JSON array of objects with name, quantity, unit, lastPrice, brand, and category. Use high accuracy for brand matching.`;
       let parts: any[] = [];
       
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
@@ -178,17 +187,17 @@ export const InventoryManagement: React.FC = () => {
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-4">
             <Scale className="text-emerald-500" size={40} /> Raw Material Hub
           </h2>
-          <p className="text-slate-500 font-bold mt-2 uppercase text-[11px] tracking-[0.2em]">Live Registry & Financial Linkage</p>
+          <p className="text-slate-500 font-bold mt-2 uppercase text-[11px] tracking-[0.2em]">Inventory Specs: Brand, Reorder Levels & Valuation</p>
         </div>
         <div className="flex flex-wrap gap-4">
           <input type="file" id="inv-import" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
           <label htmlFor="inv-import" className={`bg-white border-2 border-slate-200 text-slate-900 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:border-emerald-500 cursor-pointer transition-all ${isProcessing ? 'opacity-50' : ''}`}>
              {isProcessing ? <Loader2 size={20} className="animate-spin" /> : <Upload size={20} />}
-             {isProcessing ? 'Working...' : 'Import List'}
+             {isProcessing ? 'AI Processing...' : 'Import Manifest'}
           </label>
-          <button onClick={() => { setEditingItem(null); setFormData(INITIAL_FORM_STATE); setIsModalOpen(true); }} className="bg-emerald-500 text-slate-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-slate-900 hover:text-white transition-all shadow-xl">
+          <button onClick={() => { setEditingItem(null); setFormData(INITIAL_FORM_STATE); setIsModalOpen(true); }} className="bg-emerald-500 text-slate-950 px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-slate-900 hover:text-white transition-all shadow-xl shadow-emerald-500/10">
             <PlusCircle size={20} />
-            Register Asset
+            Add Asset
           </button>
         </div>
       </div>
@@ -198,7 +207,7 @@ export const InventoryManagement: React.FC = () => {
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-500 transition-colors" size={22} />
           <input 
             type="text" 
-            placeholder="Search material archives..." 
+            placeholder="Search material archives by name or brand..." 
             className="w-full pl-16 pr-12 py-5 rounded-3xl bg-slate-50 border-none font-black text-slate-900 outline-none focus:bg-white transition-all" 
             value={searchTerm} 
             onChange={(e) => setSearchTerm(e.target.value)} 
@@ -208,12 +217,13 @@ export const InventoryManagement: React.FC = () => {
 
       <div className="bg-white rounded-[3.5rem] border-2 border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[900px]">
+          <table className="w-full text-left min-w-[1000px]">
             <thead className="bg-slate-50/50">
               <tr>
-                <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset</th>
-                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Quantity</th>
-                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Unit Price</th>
+                <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset Details</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Available</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Threshold</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Unit Cost</th>
                 <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total Value</th>
                 <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                 <th className="px-10 py-8 text-right"></th>
@@ -226,18 +236,33 @@ export const InventoryManagement: React.FC = () => {
                     <p className="font-black text-slate-900 text-xl tracking-tight mb-1">{item.name}</p>
                     <div className="flex items-center gap-2">
                       <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-2 py-0.5 rounded-md">{item.category}</span>
-                      {item.brand && <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1"><Tag size={10} /> {item.brand}</span>}
+                      {item.brand ? (
+                        <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1"><Tag size={10} /> {item.brand}</span>
+                      ) : (
+                        <span className="text-[9px] font-black text-rose-400 uppercase tracking-widest flex items-center gap-1"><ShieldAlert size={10} /> No Brand</span>
+                      )}
                     </div>
                   </td>
                   <td className="px-8 py-8 text-right">
-                    <p className="font-black text-slate-900 text-2xl tracking-tighter">{item.quantity} <span className="text-xs font-medium text-slate-400 uppercase">{item.unit}</span></p>
+                    <p className="font-black text-slate-900 text-2xl tracking-tighter">
+                      {item.quantity} <span className="text-xs font-medium text-slate-400 uppercase">{item.unit}</span>
+                    </p>
+                    {item.reserved && item.reserved > 0 ? (
+                      <p className="text-[10px] font-bold text-slate-400">-{item.reserved} {item.unit} reserved</p>
+                    ) : null}
+                  </td>
+                  <td className="px-8 py-8 text-center">
+                    <div className="inline-flex flex-col items-center">
+                      <p className="text-sm font-black text-slate-900">{item.reorderLevel} {item.unit}</p>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mt-1">Min Level</p>
+                    </div>
                   </td>
                   <td className="px-8 py-8 text-right font-black text-slate-900 text-xl">₹{item.lastPrice || 0}</td>
                   <td className="px-8 py-8 text-right">
                     <p className="font-black text-emerald-600 text-2xl tracking-tighter">₹{((item.quantity || 0) * (item.lastPrice || 0)).toLocaleString()}</p>
                   </td>
                   <td className="px-8 py-8">
-                     <div className={`px-4 py-2 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit ${getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
+                     <div className={`px-4 py-2 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit ${getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'out' ? 'bg-rose-50 text-rose-700 border-rose-100' : 'bg-amber-50 text-amber-700 border-amber-100'}`}>
                         {getStatus(item.quantity, item.reorderLevel, item.reserved || 0)}
                      </div>
                   </td>
@@ -256,41 +281,85 @@ export const InventoryManagement: React.FC = () => {
           <div className="bg-white rounded-[4rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-10 text-white relative shrink-0">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-10 right-12 bg-white/10 p-4 rounded-3xl hover:bg-rose-500 transition-all"><X size={24} /></button>
-              <h3 className="text-3xl font-black uppercase tracking-tighter">{editingItem ? 'Update Asset' : 'New Asset'}</h3>
-              <p className="text-emerald-400 font-black mt-2 text-[10px] uppercase tracking-[0.4em]">Inventory Registry Protocol</p>
+              <h3 className="text-3xl font-black uppercase tracking-tighter">{editingItem ? 'Edit Spec' : 'Add New Spec'}</h3>
+              <p className="text-emerald-400 font-black mt-2 text-[10px] uppercase tracking-[0.4em]">Operational Asset Registration</p>
             </div>
             
             <div className="p-10 space-y-8 overflow-y-auto custom-scrollbar">
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Name</label>
-                    <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner" />
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Asset Identity (Name)</label>
+                    <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner" placeholder="e.g. Sona Masoori Rice" />
                   </div>
                   <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Brand</label>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Brand Mapping</label>
                     <select 
                       value={formData.brand} 
                       onChange={e => setFormData({...formData, brand: e.target.value})} 
                       className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner"
                     >
-                      <option value="">Unbranded</option>
+                      <option value="">Select Brand...</option>
                       {brands.map(b => (
                         <option key={b.id} value={b.name}>{b.name}</option>
+                      ))}
+                      <option value="General">General / Unbranded</option>
+                    </select>
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Unit</label>
+                    <select 
+                      value={formData.unit} 
+                      onChange={e => setFormData({...formData, unit: e.target.value})} 
+                      className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner"
+                    >
+                      {['kg', 'L', 'g', 'ml', 'pcs', 'pkt', 'box', 'crate'].map(u => (
+                        <option key={u} value={u}>{u}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Stock Level</label>
+                    <input type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Reorder Level (Min)</label>
+                    <input type="number" value={formData.reorderLevel} onChange={e => setFormData({...formData, reorderLevel: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                  </div>
+               </div>
+
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Last Purchase Price (₹)</label>
+                    <input type="number" value={formData.lastPrice} onChange={e => setFormData({...formData, lastPrice: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
+                  </div>
+                  <div className="space-y-3">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Category</label>
+                    <select 
+                      value={formData.category} 
+                      onChange={e => setFormData({...formData, category: e.target.value})} 
+                      className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner"
+                    >
+                      {['Produce', 'Dry Goods', 'Dairy', 'Meat/Seafood', 'Oil & Staples', 'Spices', 'Bakery', 'Cleaning', 'Equipment'].map(c => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
                </div>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Price (₹)</label>
-                    <input type="number" value={formData.lastPrice} onChange={e => setFormData({...formData, lastPrice: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
-                  </div>
-                  <div className="space-y-3">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock</label>
-                    <input type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
-                  </div>
+
+               <div className="bg-emerald-50 p-6 rounded-[2rem] border border-emerald-100 flex items-start gap-4">
+                 <ShieldAlert size={24} className="text-emerald-500 shrink-0 mt-1" />
+                 <p className="text-[10px] font-bold text-emerald-800 leading-relaxed uppercase tracking-wide">
+                   Ensuring Brand and Reorder Level accuracy enables AI-driven forecasting. 
+                   Estimates will alert you when stock dips below the specified minimum quantity.
+                 </p>
                </div>
-               <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase tracking-widest text-xs shadow-2xl hover:bg-emerald-600 transition-all">Commit Changes</button>
+
+               <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase tracking-widest text-xs shadow-2xl hover:bg-emerald-600 transition-all active:scale-95">
+                 Commit Registration
+               </button>
             </div>
           </div>
         </div>
@@ -300,14 +369,17 @@ export const InventoryManagement: React.FC = () => {
          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
             <div className="bg-white rounded-[3rem] w-full max-w-4xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col">
                <div className="bg-slate-900 p-10 text-white flex justify-between items-center shrink-0">
-                  <h3 className="text-3xl font-black uppercase tracking-tight">Import Review</h3>
+                  <h3 className="text-3xl font-black uppercase tracking-tight">AI Manifest Review</h3>
                   <button onClick={() => { setIsReviewOpen(false); setImportItems([]); }} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
                </div>
                
                <div className="flex-1 overflow-y-auto p-10 custom-scrollbar space-y-4">
                   {importItems.map((item, idx) => (
                      <div key={idx} className="bg-slate-50 p-6 rounded-[2rem] border border-slate-200 flex flex-col md:flex-row gap-6 items-center">
-                        <div className="flex-1 w-full font-black text-lg text-slate-900">{item.name}</div>
+                        <div className="flex-1 w-full">
+                           <p className="font-black text-lg text-slate-900">{item.name}</p>
+                           <p className="text-[9px] font-black text-blue-500 uppercase tracking-widest">Brand: {item.brand || 'TBD'}</p>
+                        </div>
                         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl border border-slate-200">
                            <span className="font-black text-slate-900">{item.quantity}</span>
                            <span className="text-xs font-bold text-slate-400 uppercase">{item.unit}</span>
@@ -319,7 +391,7 @@ export const InventoryManagement: React.FC = () => {
 
                <div className="p-10 border-t flex justify-end gap-4 shrink-0 bg-slate-50">
                   <button onClick={commitImport} className="bg-emerald-500 text-slate-950 px-12 py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-slate-900 hover:text-white transition-all">
-                     Confirm Batch Import
+                     Verify & Batch Import
                   </button>
                </div>
             </div>

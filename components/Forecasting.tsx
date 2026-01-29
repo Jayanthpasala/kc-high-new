@@ -11,13 +11,16 @@ import {
   Truck, 
   TrendingDown,
   ChevronRight,
-  Calendar
+  Calendar,
+  ShieldCheck
 } from 'lucide-react';
 import { ProductionPlan, Recipe, InventoryItem, Vendor, VendorPricePoint } from '../types';
 
 interface ForecastItem {
   name: string;
+  brand: string;
   current: number;
+  reorderLevel: number;
   dailyUsage: number;
   daysLeft: number;
   status: 'SAFE' | 'LOW' | 'CRITICAL' | 'EMPTY';
@@ -45,40 +48,35 @@ export const Forecasting: React.FC = () => {
       const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
       const vendors: Vendor[] = JSON.parse(localStorage.getItem('vendors') || '[]');
       
-      // 1. Calculate Average Daily Usage based on future 30 days plans
       const ingredientUsage: Record<string, number> = {};
       const today = new Date();
       const in30Days = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
-      let daysCounted = 0;
+      let daysCounted = 30;
 
-      // Filter plans for the next 30 days
-      const relevantPlans = plans.filter(p => {
-         const d = new Date(p.date);
-         return d >= today && d <= in30Days;
-      });
-      
-      if (relevantPlans.length > 0) {
-          relevantPlans.forEach(plan => {
-            plan.meals.forEach(meal => {
-              meal.dishes.forEach(dish => {
-                const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
-                if (recipe) {
-                  recipe.ingredients.forEach(ing => {
-                    const key = ing.name.toLowerCase();
-                    const volume = ing.amount * (ing.conversionFactor || 1.0);
-                    ingredientUsage[key] = (ingredientUsage[key] || 0) + volume;
-                  });
-                }
-              });
+      // Calculate usage from plans
+      plans.forEach(plan => {
+        const d = new Date(plan.date);
+        if (d >= today && d <= in30Days) {
+          plan.meals.forEach(meal => {
+            meal.dishes.forEach(dish => {
+              const recipe = recipes.find(r => r.name.toLowerCase() === dish.toLowerCase());
+              if (recipe) {
+                recipe.ingredients.forEach(ing => {
+                  const key = ing.name.toLowerCase();
+                  const volume = ing.amount * (ing.conversionFactor || 1.0);
+                  ingredientUsage[key] = (ingredientUsage[key] || 0) + volume;
+                });
+              }
             });
           });
-          daysCounted = 30; // Assuming the plan covers the window, roughly
-      }
+        }
+      });
 
       const finalForecasts = inventory.map(item => {
         const totalProjectedUsage = ingredientUsage[item.name.toLowerCase()] || 0;
-        const dailyUsage = daysCounted > 0 ? totalProjectedUsage / daysCounted : 0;
+        const dailyUsage = totalProjectedUsage / daysCounted;
         const available = item.quantity - (item.reserved || 0);
+        const reorderLevel = item.reorderLevel || 0;
         
         let daysLeft = 999;
         if (dailyUsage > 0) {
@@ -87,31 +85,50 @@ export const Forecasting: React.FC = () => {
             daysLeft = 0;
         }
 
+        // Estimation logic based on user-defined specs (Reorder Level & Brand-based Stock)
         let status: 'SAFE' | 'LOW' | 'CRITICAL' | 'EMPTY' = 'SAFE';
-        if (available <= 0) status = 'EMPTY';
-        else if (daysLeft < 3) status = 'CRITICAL';
-        else if (daysLeft < 7) status = 'LOW';
+        if (available <= 0) {
+            status = 'EMPTY';
+        } else if (available <= (reorderLevel / 2)) {
+            // Very critical, far below minimum
+            status = 'CRITICAL';
+        } else if (available <= reorderLevel) {
+            // Reached reorder threshold
+            status = 'LOW';
+        } else if (daysLeft < 3) {
+            // Predictive critical even if above reorder level
+            status = 'CRITICAL';
+        } else if (daysLeft < 7) {
+            // Predictive low
+            status = 'LOW';
+        }
 
         return {
           name: item.name,
+          brand: item.brand || 'Unbranded',
           current: available,
+          reorderLevel: reorderLevel,
           dailyUsage,
           daysLeft,
           status,
           unit: item.unit
         };
-      }).sort((a, b) => a.daysLeft - b.daysLeft);
+      }).sort((a, b) => {
+        // Sort by priority: Empty -> Critical -> Low -> Safe
+        const priority = { 'EMPTY': 0, 'CRITICAL': 1, 'LOW': 2, 'SAFE': 3 };
+        return priority[a.status] - priority[b.status];
+      });
 
       setForecasts(finalForecasts);
 
-      // 2. Brand Cost Analysis (Existing Logic)
+      // Brand Cost Analysis
       const priceMap: Record<string, { brand: string, price: number, supplier: string, unit: string }[]> = {};
       vendors.forEach(vendor => {
         vendor.priceLedger?.forEach(pp => {
           const key = pp.itemName.toLowerCase();
           if (!priceMap[key]) priceMap[key] = [];
           priceMap[key].push({
-            brand: pp.brand || 'Unbranded',
+            brand: pp.brand || 'General',
             price: pp.price,
             supplier: vendor.name,
             unit: pp.unit
@@ -147,66 +164,83 @@ export const Forecasting: React.FC = () => {
     <div className="space-y-12 pb-24 animate-in fade-in duration-500">
       <div className="flex justify-between items-end border-b pb-8">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3"><BarChart3 className="text-emerald-500" size={32} /> Operational Forecast</h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Predictive Stock Runways & Purchase Suggestions</p>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3"><BarChart3 className="text-emerald-500" size={32} /> Predictive Analytics</h2>
+          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest font-black">Estimates based on Brand Specs & Defined Reorder Levels</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group min-h-[250px]">
+          <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white flex flex-col justify-between shadow-2xl relative overflow-hidden group min-h-[200px]">
              <div className="relative z-10">
-                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4">Urgent Attention</p>
-                <p className="text-5xl font-black text-white tracking-tighter">{forecasts.filter(f => f.status === 'CRITICAL' || f.status === 'EMPTY').length}</p>
-                <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase">Items expiring within 3 days</p>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-4">Stock Alerts</p>
+                <p className="text-5xl font-black text-white tracking-tighter">{forecasts.filter(f => f.status !== 'SAFE').length}</p>
+                <p className="text-[9px] font-bold text-slate-400 mt-2 uppercase">Items below safety reorder levels</p>
              </div>
              <AlertCircle className="text-rose-500 absolute -right-4 -bottom-4 opacity-20" size={100} />
           </div>
+          <div className="bg-emerald-500 p-8 rounded-[2.5rem] text-slate-950 flex flex-col justify-between shadow-xl relative overflow-hidden group min-h-[200px]">
+             <div className="relative z-10">
+                <p className="text-[10px] font-black text-emerald-900 uppercase tracking-widest mb-4">Healthy Specs</p>
+                <p className="text-5xl font-black text-white tracking-tighter">{forecasts.filter(f => f.status === 'SAFE').length}</p>
+                <p className="text-[9px] font-bold text-emerald-900/60 mt-2 uppercase tracking-wide">Brand stock within safety limits</p>
+             </div>
+             <CheckCircle className="text-white absolute -right-4 -bottom-4 opacity-20" size={100} />
+          </div>
       </div>
 
-      {/* Stock Exhaustion Estimates */}
+      {/* Brand-Based Runway Estimations */}
       <section className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="bg-slate-900 text-white p-2 rounded-xl"><Clock size={20} /></div>
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Stock Runway Estimates</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Brand Runway Estimations</h3>
         </div>
         <div className="bg-white rounded-[3rem] border-2 border-slate-100 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <div className="divide-y divide-slate-100 min-w-[700px]">
+            <div className="divide-y divide-slate-100 min-w-[900px]">
                <div className="grid grid-cols-12 p-6 bg-slate-50 text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                  <div className="col-span-4">Item Name</div>
-                  <div className="col-span-3">Est. Daily Usage</div>
-                  <div className="col-span-3">Days Left</div>
-                  <div className="col-span-2 text-right">Status</div>
+                  <div className="col-span-4">Material / Brand Spec</div>
+                  <div className="col-span-2 text-center">Safety Level</div>
+                  <div className="col-span-2 text-center">Daily Burn</div>
+                  <div className="col-span-2 text-center">Runway</div>
+                  <div className="col-span-2 text-right">Estimate Status</div>
                </div>
                {forecasts.map((f, i) => (
                  <div key={i} className="p-6 grid grid-cols-12 items-center hover:bg-slate-50 transition-all group">
                     <div className="col-span-4">
-                       <h4 className="font-bold text-slate-900">{f.name}</h4>
-                       <p className="text-xs text-slate-400 font-medium">Current: {f.current.toFixed(1)} {f.unit}</p>
+                       <h4 className="font-bold text-slate-900 text-lg">{f.name}</h4>
+                       <div className="flex items-center gap-2 mt-1">
+                          <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 px-2 py-0.5 rounded-md flex items-center gap-1"><Tag size={8} /> {f.brand}</span>
+                          <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Curr: {f.current.toFixed(1)} {f.unit}</span>
+                       </div>
                     </div>
                     
-                    <div className="col-span-3 text-sm text-slate-600 font-bold">
-                       {f.dailyUsage > 0 ? `${f.dailyUsage.toFixed(2)} ${f.unit}/day` : '-'}
+                    <div className="col-span-2 text-center">
+                       <p className="text-sm font-black text-slate-900">{f.reorderLevel} {f.unit}</p>
+                       <p className="text-[8px] font-black text-slate-400 uppercase">Min Spec</p>
                     </div>
 
-                    <div className="col-span-3">
+                    <div className="col-span-2 text-center">
+                       <p className="text-sm font-black text-slate-600">{f.dailyUsage > 0 ? `${f.dailyUsage.toFixed(2)} ${f.unit}` : '-'}</p>
+                    </div>
+
+                    <div className="col-span-2 text-center">
                        {f.dailyUsage > 0 ? (
-                         <div className="flex items-center gap-2">
+                         <div className="inline-flex items-baseline gap-1">
                             <span className={`text-xl font-black ${f.daysLeft < 3 ? 'text-rose-500' : f.daysLeft < 7 ? 'text-amber-500' : 'text-emerald-500'}`}>
                                {f.daysLeft.toFixed(0)}
                             </span>
-                            <span className="text-[10px] font-bold uppercase text-slate-400">Days</span>
+                            <span className="text-[8px] font-black uppercase text-slate-400">Days</span>
                          </div>
                        ) : (
-                         <span className="text-xs text-slate-300 font-bold">No Usage Data</span>
+                         <span className="text-xs text-slate-300 font-bold italic">Stable</span>
                        )}
                     </div>
 
                     <div className="col-span-2 text-right">
-                       <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                           f.status === 'SAFE' ? 'bg-emerald-100 text-emerald-600' :
-                           f.status === 'LOW' ? 'bg-amber-100 text-amber-600' :
-                           'bg-rose-100 text-rose-600'
+                       <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest ${
+                           f.status === 'SAFE' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-100' :
+                           f.status === 'LOW' ? 'bg-amber-50 text-amber-700 border-2 border-amber-100' :
+                           'bg-rose-50 text-rose-700 border-2 border-rose-100'
                        }`}>
                            {f.status}
                        </span>
@@ -218,25 +252,31 @@ export const Forecasting: React.FC = () => {
         </div>
       </section>
 
-      {/* Brand Analysis Section */}
+      {/* Cost optimization based on brand pricing data */}
       <section className="space-y-6">
         <div className="flex items-center gap-3">
           <div className="bg-emerald-500 text-white p-2 rounded-xl"><DollarSign size={20} /></div>
-          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Cost Optimization</h3>
+          <h3 className="text-2xl font-black text-slate-900 tracking-tight">Market Specs Analysis</h3>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
            {brandAnalysis.map((item, idx) => (
-             <div key={idx} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 hover:border-emerald-500 transition-all group flex flex-col">
+             <div key={idx} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 hover:border-emerald-500 transition-all group flex flex-col shadow-sm">
                 <div className="flex justify-between items-start mb-6">
                    <h4 className="text-xl font-black text-slate-900 leading-none">{item.itemName}</h4>
-                   <div className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border border-emerald-100">
-                      <TrendingDown size={14} /> Save ₹{item.savingsOpportunity}
+                   <div className="bg-emerald-50 text-emerald-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 border border-emerald-100 shadow-sm">
+                      <TrendingDown size={14} /> Optimization: ₹{item.savingsOpportunity}
                    </div>
                 </div>
-                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-auto">
-                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Tag size={10} /> Cheapest Option</p>
-                   <p className="font-black text-slate-900 text-lg">{item.cheapestBrand}</p>
-                   <p className="text-sm font-black text-emerald-500 mt-1">₹{item.lowestPrice} <span className="text-[10px] text-slate-300">/ {item.unit} via {item.cheapestSupplier}</span></p>
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 mt-auto flex justify-between items-end">
+                   <div>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-1.5"><ShieldCheck size={10} /> Recommended Brand</p>
+                      <p className="font-black text-slate-900 text-lg">{item.cheapestBrand}</p>
+                      <p className="text-sm font-black text-emerald-500 mt-1">₹{item.lowestPrice} <span className="text-[10px] text-slate-300">/ {item.unit}</span></p>
+                   </div>
+                   <div className="text-right">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Fulfillment</p>
+                      <p className="text-xs font-bold text-slate-600">{item.cheapestSupplier}</p>
+                   </div>
                 </div>
              </div>
            ))}

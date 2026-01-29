@@ -1,4 +1,5 @@
-import React, { ErrorInfo, ReactNode } from 'react';
+
+import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -13,9 +14,9 @@ interface State {
 /**
  * Standard React Error Boundary component.
  */
-// Fix: Explicitly extending React.Component with defined Props and State to ensure setState and props are correctly inherited and recognized by the TypeScript compiler.
-class ErrorBoundary extends React.Component<Props, State> {
-  public state: State = {
+// Fix: Import Component explicitly and ensure the class correctly inherits setState and props.
+class ErrorBoundary extends Component<Props, State> {
+  public override state: State = {
     hasError: false,
     error: undefined
   };
@@ -24,17 +25,17 @@ class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true, error };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error in module:", error, errorInfo);
   }
 
   // Arrow function for lexical binding of 'this'
   private handleReset = () => {
-    // Fix: Using setState inherited from React.Component
+    // Fix: Explicitly using this.setState inherited from Component
     this.setState({ hasError: false, error: undefined });
   };
 
-  public render() {
+  public override render() {
     if (this.state.hasError) {
       return (
         <div className="bg-rose-50 p-10 rounded-[2.5rem] border-2 border-dashed border-rose-200 text-center animate-in fade-in duration-500">
@@ -63,7 +64,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Fix: Accessing children through this.props inherited from React.Component
+    // Fix: Accessing children through this.props inherited from Component
     return this.props.children;
   }
 }
