@@ -3,7 +3,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 interface State {
@@ -13,18 +13,14 @@ interface State {
 
 /**
  * Standard React Error Boundary component.
- * Fix: Explicitly import and extend Component to ensure state, props, and setState are correctly typed.
- * This resolution also fixes downstream "Property 'children' is missing" errors in files that utilize this boundary.
+ * Fix: Explicitly declare state and props to ensure they are correctly typed and accessible via 'this'.
  */
 class ErrorBoundary extends Component<Props, State> {
-  // Fix: Explicit constructor with Props to ensure base class properties are accessible
-  constructor(props: Props) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: undefined
-    };
-  }
+  // Fix: Declare state as a property to ensure it is recognized by TypeScript and matches State interface
+  public state: State = {
+    hasError: false,
+    error: undefined
+  };
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
@@ -40,7 +36,7 @@ class ErrorBoundary extends Component<Props, State> {
   };
 
   public render() {
-    // Fix: Access state property inherited from React.Component
+    // Fix: Access state property inherited from React.Component correctly via this.state
     if (this.state.hasError) {
       return (
         <div className="bg-rose-50 p-10 rounded-[2.5rem] border-2 border-dashed border-rose-200 text-center animate-in fade-in duration-500">
@@ -69,7 +65,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fix: Access props property inherited from React.Component
+    // Fix: Access children from props property inherited from React.Component
     return this.props.children;
   }
 }

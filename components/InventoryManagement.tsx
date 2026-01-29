@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Package, Search, AlertTriangle, CheckCircle2, Edit3, Trash2, X, PlusCircle, Scale, RefreshCcw, FileText, Loader2, TrendingUp, Banknote, Database, Tag, Truck, Upload, ArrowRight
@@ -71,8 +72,8 @@ export const InventoryManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Robust check for shimmed API key
-    const apiKey = window.process?.env?.API_KEY;
+    // Fix: Use process.env.API_KEY directly as per Gemini API rules and avoid window.process error
+    const apiKey = process.env.API_KEY;
     if (!apiKey) {
         alert("System Configuration Error: API Key missing from environment.");
         return;
@@ -80,7 +81,8 @@ export const InventoryManagement: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      // Fix: Initialize GoogleGenAI with named apiKey parameter and use gemini-3-flash-preview model
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
       let promptText = `Extract inventory items from this file. Return a JSON array of objects with name, quantity, unit, lastPrice, brand, and category.`;
 
@@ -251,7 +253,7 @@ export const InventoryManagement: React.FC = () => {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[4rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 flex flex-col max-h-[90vh]">
+          <div className="bg-white rounded-[4rem] w-full max-w-2xl overflow-hidden shadow-2xl border-4 border-slate-900 animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-10 text-white relative shrink-0">
               <button onClick={() => setIsModalOpen(false)} className="absolute top-10 right-12 bg-white/10 p-4 rounded-3xl hover:bg-rose-500 transition-all"><X size={24} /></button>
               <h3 className="text-3xl font-black uppercase tracking-tighter">{editingItem ? 'Update Asset' : 'New Asset'}</h3>
@@ -281,11 +283,11 @@ export const InventoryManagement: React.FC = () => {
                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Price (₹)</label>
-                    <input type="number" value={formData.lastPrice} onChange={e => setFormData({...formData, lastPrice: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner" />
+                    <input type="number" value={formData.lastPrice} onChange={e => setFormData({...formData, lastPrice: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
                   </div>
                   <div className="space-y-3">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Stock</label>
-                    <input type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:bg-white transition-all shadow-inner" />
+                    <input type="number" value={formData.quantity} onChange={e => setFormData({...formData, quantity: parseFloat(e.target.value) || 0})} className="w-full px-8 py-5 rounded-3xl bg-slate-50 border-none font-black text-xl text-slate-900 outline-none focus:border-emerald-500 transition-all shadow-inner" />
                   </div>
                </div>
                <button onClick={handleSave} className="w-full bg-slate-900 text-white py-6 rounded-[2.5rem] font-black uppercase tracking-widest text-xs shadow-2xl hover:bg-emerald-600 transition-all">Commit Changes</button>

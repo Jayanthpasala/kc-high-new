@@ -52,9 +52,23 @@ export interface POTemplateConfig {
 
 export type PlanType = 'production' | 'holiday' | 'event';
 
+export interface DishDetail {
+  name: string;
+  amountCooked?: number; // Total amount prepared in KG or L
+}
+
 export interface Meal {
   mealType: string;
-  dishes: string[];
+  dishes: string[]; // For basic display
+  dishDetails?: DishDetail[]; // Detailed production data
+}
+
+export interface ConsumptionRecord {
+  teachers: number;
+  primary: number;
+  prePrimary: number;
+  additional: number;
+  others: number;
 }
 
 export interface ProductionPlan {
@@ -68,12 +82,13 @@ export interface ProductionPlan {
   eventName?: string;
   isConsumed?: boolean;
   notes?: string;
+  headcounts?: ConsumptionRecord;
 }
 
 export interface InventoryItem {
   id: string;
   name: string;
-  brand?: string; // New field for brand tracking
+  brand?: string; 
   category: string;
   quantity: number;
   unit: string;
@@ -88,7 +103,7 @@ export interface InventoryItem {
 
 export interface Ingredient {
   name: string;
-  brand?: string; // New field for recipe-specific brand requirements
+  brand?: string; 
   amount: number;
   unit: string;
   inventoryItemId?: string;
@@ -117,7 +132,7 @@ export interface InventoryReservation {
 export interface PendingProcurement {
   id: string;
   ingredientName: string;
-  brand?: string; // Brand tracking for requests
+  brand?: string; 
   requiredQty: number;
   currentStock: number;
   shortageQty: number;
@@ -130,7 +145,7 @@ export interface PendingProcurement {
 
 export interface VendorPricePoint {
   itemName: string;
-  brand?: string; // Price points tied to specific brands
+  brand?: string; 
   price: number;
   unit: string;
 }
@@ -165,7 +180,7 @@ export interface POItem {
 export interface PurchaseOrder {
   id: string;
   orderNumber: string;
-  grnNumber?: string; // Unique Goods Receipt Note number
+  grnNumber?: string; 
   vendorId: string;
   vendorName: string;
   items: POItem[];
