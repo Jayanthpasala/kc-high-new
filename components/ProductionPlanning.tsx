@@ -121,7 +121,9 @@ export const ProductionPlanning: React.FC = () => {
     if (plan) {
       setEditMeals(plan.meals.map(m => ({
         ...m,
-        dishDetails: m.dishDetails || m.dishes.map(d => ({ name: d, amountCooked: 0 }))
+        dishDetails: m.dishDetails && m.dishDetails.length > 0 
+          ? m.dishDetails 
+          : m.dishes.map(d => ({ name: d, amountCooked: 0 }))
       })));
       setEditHeadcounts(plan.headcounts || { teachers: 0, primary: 0, prePrimary: 0, additional: 0, others: 0 });
     } else {
@@ -140,11 +142,17 @@ export const ProductionPlanning: React.FC = () => {
     const planId = dayPlan?.id || generateId();
     const dateStr = getLocalDateString(selectedDate);
 
+    // Sync dishes array from dishDetails for display consistency
+    const mealsWithDishes = editMeals.map(m => ({
+      ...m,
+      dishes: m.dishDetails?.map(d => d.name) || []
+    }));
+
     const newPlan: ProductionPlan = {
       id: planId,
       date: dateStr,
       type: 'production',
-      meals: editMeals.filter(m => m.dishes.length > 0 || (m.dishDetails && m.dishDetails.length > 0)),
+      meals: mealsWithDishes.filter(m => (m.dishes.length > 0) || (m.dishDetails && m.dishDetails.length > 0)),
       headcounts: editHeadcounts,
       isApproved: true,
       createdAt: dayPlan?.createdAt || Date.now()
@@ -242,7 +250,7 @@ export const ProductionPlanning: React.FC = () => {
     if (plan.isConsumed) return;
 
     // Check for missing recipes before allowing consumption
-    const unmappedDishes = plan.meals.flatMap(m => m.dishes).filter(d => !recipes.some(r => r.name.toLowerCase() === d.toLowerCase()));
+    const unmappedDishes = plan.meals.flatMap(m => m.dishDetails?.map(d => d.name) || m.dishes).filter(d => !recipes.some(r => r.name.toLowerCase() === d.toLowerCase()));
     if (unmappedDishes.length > 0) {
       alert(`Safety Lock: Defined recipes are missing for: ${unmappedDishes.join(', ')}. Please map them before deductions.`);
       return;
@@ -257,7 +265,6 @@ export const ProductionPlanning: React.FC = () => {
       let itemsToDeduct: Record<string, number> = {};
 
       plan.meals.forEach((meal, mi) => {
-        // Use editMeals as it contains the live inputs for amountCooked
         const details = editMeals[mi].dishDetails || [];
         details.forEach((dish) => {
           const recipe = recipes.find(r => r.name.toLowerCase() === dish.name.toLowerCase());
@@ -265,8 +272,8 @@ export const ProductionPlanning: React.FC = () => {
           
           if (recipe && totalCookedAmount > 0) {
             recipe.ingredients.forEach(ing => {
-              // Standard logic: recipe is for 1 unit. 
-              // totalCookedAmount (e.g. 20kg) x ingredient amount (e.g. 0.1kg chicken) x factor
+              // Scaling Logic: Recipe is for 1 unit. 
+              // Deduction = (Ingredient Amt Per Unit * Total Produced Units) * Conversion Factor
               const invItem = inventory.find(i => i.name.toLowerCase() === ing.name.toLowerCase());
               if (invItem) {
                 const scaledAmount = ing.amount * totalCookedAmount * (ing.conversionFactor || 1.0);
@@ -296,7 +303,7 @@ export const ProductionPlanning: React.FC = () => {
       loadData();
       setDayPlan(updated);
       window.dispatchEvent(new Event('storage'));
-      alert("Inventory successfully updated! Material usage scaled automatically based on production amounts.");
+      alert("Inventory successfully updated! Automated material scaling applied based on production logs.");
     } catch (err) {
       console.error(err);
       alert("Failure updating stock levels in Cloud Registry.");
@@ -323,10 +330,10 @@ export const ProductionPlanning: React.FC = () => {
                {plan.meals.slice(0, 2).map((m, mi) => (
                  <div key={mi} className="bg-slate-50 border border-slate-100 rounded-lg p-1.5 flex items-center gap-2 overflow-hidden shadow-sm">
                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                   <span className="text-[9px] font-black text-slate-700 truncate">{m.dishes[0] || (m.dishDetails && m.dishDetails[0]?.name)}</span>
+                   <span className="text-[9px] font-black text-slate-700 truncate">{m.dishDetails && m.dishDetails[0] ? m.dishDetails[0].name : (m.dishes[0] || 'Unlabeled')}</span>
                  </div>
                ))}
-               {plan.isConsumed && <div className="text-[7px] font-black text-emerald-600 uppercase mt-1">✓ Stock Deducted</div>}
+               {plan.isConsumed && <div className="text-[7px] font-black text-emerald-600 uppercase mt-1">✓ Logged</div>}
              </div>
            )}
         </div>
@@ -343,7 +350,7 @@ export const ProductionPlanning: React.FC = () => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
              <CalendarCheck className="text-emerald-500" size={32} /> Production Hub
           </h2>
-          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Scale Logic: Amounts defined for 1 Unit scale to Total Produced</p>
+          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Define recipes for 1 unit. Log full production below for auto-scaling.</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => setView('UPLOAD')} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl shadow-slate-900/10">
@@ -356,8 +363,8 @@ export const ProductionPlanning: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-white p-12 rounded-[3rem] shadow-2xl text-center max-w-sm w-full animate-in zoom-in-95">
             <Loader2 className="animate-spin mx-auto text-emerald-500 mb-6" size={64} />
-            <h3 className="text-2xl font-black text-slate-900">Synchronizing Stock</h3>
-            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">Deducting material volumes based on production scaling...</p>
+            <h3 className="text-2xl font-black text-slate-900">Processing Operations</h3>
+            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">Updating cloud inventory records...</p>
           </div>
         </div>
       )}
@@ -370,7 +377,7 @@ export const ProductionPlanning: React.FC = () => {
                  {missingRecipesCount > 0 ? <AlertTriangle size={32} /> : <CheckCircle size={32} />}
               </div>
               <div>
-                 <h3 className="text-xl font-black text-slate-900">{missingRecipesCount > 0 ? 'Linkage Required' : 'BOM Fully Synchronized'}</h3>
+                 <h3 className="text-xl font-black text-slate-900">{missingRecipesCount > 0 ? 'Mapping Required' : 'BOM Fully Synchronized'}</h3>
                  <p className="text-sm font-bold text-slate-500 mt-1">
                    {missingRecipesCount > 0 ? `Detected ${missingRecipesCount} unmapped dishes. Recipes must be defined to scale ingredients.` : 'All extracted dishes match existing master recipes.'}
                  </p>
@@ -386,13 +393,13 @@ export const ProductionPlanning: React.FC = () => {
                         <div key={mi} className="bg-slate-50 p-6 rounded-3xl space-y-4">
                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{m.mealType}</p>
                            <div className="space-y-2">
-                              {m.dishes.map((dish, di) => {
-                                const isMapped = recipes.some(r => r.name.toLowerCase() === dish.toLowerCase());
+                              {m.dishDetails?.map((dish, di) => {
+                                const isMapped = recipes.some(r => r.name.toLowerCase() === dish.name.toLowerCase());
                                 return (
                                   <div key={di} className={`p-4 rounded-xl border-2 flex items-center justify-between gap-3 ${isMapped ? 'bg-white border-slate-100' : 'bg-rose-50 border-rose-100'}`}>
-                                     <span className="font-bold text-sm text-slate-900">{dish}</span>
+                                     <span className="font-bold text-sm text-slate-900">{dish.name}</span>
                                      {!isMapped ? (
-                                       <button onClick={() => { setDishToDefine(dish); setView('DEFINE_RECIPE'); }} className="p-2 bg-rose-500 text-white rounded-lg shadow-lg hover:bg-slate-900 transition-all"><Plus size={14} /></button>
+                                       <button onClick={() => { setDishToDefine(dish.name); setView('DEFINE_RECIPE'); }} className="p-2 bg-rose-500 text-white rounded-lg shadow-lg hover:bg-slate-900 transition-all"><Plus size={14} /></button>
                                      ) : (
                                        <CheckCircle2 size={16} className="text-emerald-500" />
                                      )}
@@ -408,7 +415,7 @@ export const ProductionPlanning: React.FC = () => {
            </div>
 
            <div className="fixed bottom-10 right-10 flex gap-4 no-print">
-              <button onClick={() => setView('CALENDAR')} className="px-10 py-5 bg-white border-2 border-slate-100 text-slate-500 rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl">Abort</button>
+              <button onClick={() => setView('CALENDAR')} className="px-10 py-5 bg-white border-2 border-slate-100 text-slate-500 rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl">Discard</button>
               <button 
                 onClick={handleApproveAll} 
                 disabled={missingRecipesCount > 0}
@@ -446,7 +453,7 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
-      {/* Detailed Day Modal (Scaling Logic Focus) */}
+      {/* Detailed Day Modal */}
       {isDayModalOpen && selectedDate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xl animate-in fade-in">
            <div className="bg-white rounded-[4rem] w-full max-w-3xl overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col max-h-[90vh] animate-in zoom-in-95">
@@ -463,14 +470,13 @@ export const ProductionPlanning: React.FC = () => {
                    <>
                      {dayPlan ? (
                        <div className="space-y-10">
-                          {/* Top Actions */}
                           <div className="flex justify-between items-center">
                              <div className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase border-2 ${dayPlan.isConsumed ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                                {dayPlan.isConsumed ? 'Operational Stock Logged' : 'Current Operations Batch'}
+                                {dayPlan.isConsumed ? 'Stock Consumption Finalized' : 'Draft Operations Batch'}
                              </div>
                              {!dayPlan.isConsumed && (
                                <button onClick={() => setEntryMode('EDIT_EXISTING')} className="flex items-center gap-2 text-[10px] font-black uppercase text-slate-900 hover:text-emerald-500 transition-all">
-                                  <Edit size={16} /> Adjust Operational Plan
+                                  <Edit size={16} /> Adjust Operations Plan
                                </button>
                              )}
                           </div>
@@ -491,9 +497,9 @@ export const ProductionPlanning: React.FC = () => {
                                                <span className="font-black text-slate-900 text-lg">{dish.name}</span>
                                                <div className="flex items-center gap-2 mt-1">
                                                  {isMapped ? (
-                                                   <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10} /> Specification Linked</span>
+                                                   <span className="text-[8px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1"><CheckCircle2 size={10} /> Linkage Active</span>
                                                  ) : (
-                                                   <button onClick={() => { setDishToDefine(dish.name); setView('DEFINE_RECIPE'); setIsDayModalOpen(false); }} className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 hover:underline"><AlertTriangle size={10} /> Link Spec Required to Auto-Scale</button>
+                                                   <button onClick={() => { setDishToDefine(dish.name); setView('DEFINE_RECIPE'); setIsDayModalOpen(false); }} className="text-[8px] font-black text-rose-500 uppercase tracking-widest flex items-center gap-1 hover:underline"><AlertTriangle size={10} /> Recipe Required to Scale Stock</button>
                                                  )}
                                                </div>
                                             </div>
@@ -559,12 +565,12 @@ export const ProductionPlanning: React.FC = () => {
                                onClick={() => toggleConsumption(dayPlan)}
                                className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black uppercase tracking-widest text-xs hover:bg-emerald-600 transition-all shadow-2xl flex items-center justify-center gap-3 active:scale-95"
                              >
-                                <UserCheck size={20} /> Initialize Stock Deduction & Scale Logic
+                                <UserCheck size={20} /> Commit Production & Scale Stock
                              </button>
                           )}
                           
-                          <button onClick={() => { if(confirm("Permanently wipe this production cycle from history?")) { mockFirestore.delete(dayPlan.id); setIsDayModalOpen(false); loadData(); window.dispatchEvent(new Event('storage')); }}} className="w-full py-4 text-rose-500 hover:bg-rose-50 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
-                             <Trash2 size={16} /> Delete Record
+                          <button onClick={() => { if(confirm("Permanently wipe this production cycle record?")) { mockFirestore.delete(dayPlan.id); setIsDayModalOpen(false); loadData(); window.dispatchEvent(new Event('storage')); }}} className="w-full py-4 text-rose-500 hover:bg-rose-50 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
+                             <Trash2 size={16} /> Delete Entry
                           </button>
                        </div>
                      ) : (
@@ -588,9 +594,7 @@ export const ProductionPlanning: React.FC = () => {
                                   <h5 className="font-black text-[10px] uppercase tracking-widest text-emerald-500">{m.mealType}</h5>
                                   <button onClick={() => {
                                     const up = [...editMeals];
-                                    if (!up[mi].dishes) up[mi].dishes = [];
                                     if (!up[mi].dishDetails) up[mi].dishDetails = [];
-                                    up[mi].dishes.push("");
                                     up[mi].dishDetails!.push({ name: "", amountCooked: 0 });
                                     setEditMeals(up);
                                   }} className="p-2 bg-white text-slate-400 hover:text-emerald-500 rounded-xl shadow-sm border border-slate-200"><Plus size={16} /></button>
@@ -601,13 +605,11 @@ export const ProductionPlanning: React.FC = () => {
                                        <div className="flex-1 relative">
                                           <input 
                                             type="text" 
-                                            placeholder="Dish Identity (e.g., Dal Tadka)" 
+                                            placeholder="Dish Identity (e.g., Yellow Dal)" 
                                             value={dish.name} 
                                             onChange={e => {
                                               const up = [...editMeals];
                                               up[mi].dishDetails![di].name = e.target.value;
-                                              // Ensure dishes array stays in sync for basic display
-                                              up[mi].dishes = up[mi].dishDetails!.map(d => d.name);
                                               setEditMeals(up);
                                             }}
                                             className="w-full px-6 py-4 rounded-2xl bg-white border-2 border-slate-100 font-black text-slate-900 shadow-sm outline-none focus:border-emerald-500" 
@@ -619,7 +621,6 @@ export const ProductionPlanning: React.FC = () => {
                                        <button onClick={() => {
                                          const up = [...editMeals];
                                          up[mi].dishDetails!.splice(di, 1);
-                                         up[mi].dishes = up[mi].dishDetails!.map(d => d.name);
                                          setEditMeals(up);
                                        }} className="p-4 text-slate-300 hover:text-rose-500 transition-colors"><Trash2 size={20} /></button>
                                      </div>
@@ -630,7 +631,7 @@ export const ProductionPlanning: React.FC = () => {
                       </div>
 
                       <div className="flex gap-4">
-                         <button onClick={() => setEntryMode('VIEW')} className="flex-1 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors">Discard Adjustments</button>
+                         <button onClick={() => setEntryMode('VIEW')} className="flex-1 py-6 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors">Discard Draft</button>
                          <button onClick={handleSaveEdit} className="flex-1 bg-slate-900 text-white py-6 rounded-3xl font-black uppercase tracking-widest text-xs shadow-2xl hover:bg-emerald-600 transition-all active:scale-95">Save Operations Plan</button>
                       </div>
                    </div>
