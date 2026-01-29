@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { 
   BookOpen, 
@@ -181,7 +182,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                       </div>
                    </div>
                    <div className="space-y-3">
-                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">Complexity</label>
+                      <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Complexity</label>
                       <select value={formData.difficulty} onChange={e => setFormData({...formData, difficulty: e.target.value as any})} className="w-full px-8 py-5 rounded-2xl bg-white border-2 border-transparent font-black text-xs uppercase tracking-widest text-slate-900 outline-none shadow-sm appearance-none">
                          <option>Easy</option><option>Medium</option><option>Hard</option>
                       </select>
