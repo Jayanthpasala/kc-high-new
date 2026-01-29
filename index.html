@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -22,7 +23,30 @@
     ::-webkit-scrollbar-track { background: #f1f5f9; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-    @media print { .no-print { display: none !important; } }
+
+    /* ✅ PRINT STYLES FOR PROFESSIONAL PDF GENERATION */
+    @media print {
+      @page {
+        margin: 1.5cm;
+        size: A4;
+      }
+      .no-print { display: none !important; }
+      body { background: white !important; }
+      #root { overflow: visible !important; }
+      .no-print-modal { 
+        position: static !important; 
+        background: white !important; 
+        padding: 0 !important; 
+        backdrop-filter: none !important;
+      }
+      .no-print-modal > div { 
+        width: 100% !important; 
+        max-width: 100% !important; 
+        margin: 0 !important; 
+        box-shadow: none !important;
+        border: none !important;
+      }
+    }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 

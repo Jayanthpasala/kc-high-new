@@ -94,6 +94,16 @@ export const InventoryManagement: React.FC = () => {
     }
   };
 
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Are you sure you want to delete this raw material: "${name}"? This action will permanently remove it from the inventory records.`)) {
+      try {
+        await deleteDoc(doc(db, "inventory", id));
+      } catch (err) {
+        alert("Error deleting material from the registry.");
+      }
+    }
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -292,7 +302,22 @@ export const InventoryManagement: React.FC = () => {
                      </div>
                   </td>
                   <td className="px-10 py-8 text-right">
-                     <button onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-emerald-600 rounded-2xl transition-all"><Edit3 size={18} /></button>
+                    <div className="flex justify-end gap-3">
+                      <button 
+                        onClick={() => { setEditingItem(item); setFormData(item); setIsModalOpen(true); }} 
+                        className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-emerald-600 rounded-2xl transition-all"
+                        title="Edit Record"
+                      >
+                        <Edit3 size={18} />
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(item.id, item.name)} 
+                        className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-rose-600 rounded-2xl transition-all"
+                        title="Delete Material"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

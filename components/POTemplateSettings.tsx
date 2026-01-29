@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Save, Building, FileText, Upload, Trash2, CheckCircle2, Globe, Mail, Phone, MapPin } from 'lucide-react';
+import { Save, Building, FileText, Upload, Trash2, CheckCircle2, Globe, Mail, Phone, MapPin, Eye, Building2 } from 'lucide-react';
 import { POTemplateConfig } from '../types';
 
 const DEFAULT_CONFIG: POTemplateConfig = {
@@ -40,7 +40,7 @@ export const POTemplateSettings: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-slate-200 pb-8">
         <div>
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
@@ -58,9 +58,9 @@ export const POTemplateSettings: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Configuration Column */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="lg:col-span-7 space-y-8">
            <div className="bg-white p-8 sm:p-10 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-8">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                  <div className="space-y-3 col-span-full">
@@ -150,8 +150,8 @@ export const POTemplateSettings: React.FC = () => {
            </div>
         </div>
 
-        {/* Branding Column */}
-        <div className="space-y-8">
+        {/* Branding & Preview Column */}
+        <div className="lg:col-span-5 space-y-8">
            <div className="bg-white p-10 rounded-[3rem] border-2 border-slate-100 shadow-sm text-center">
               <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-6">Organizational Identity (Logo)</label>
               
@@ -174,8 +174,10 @@ export const POTemplateSettings: React.FC = () => {
                    htmlFor="logo-upload"
                    className="absolute inset-0 flex items-center justify-center bg-slate-900/60 text-white rounded-3xl opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer font-black text-[10px] uppercase tracking-widest"
                  >
-                    <Upload size={20} className="mb-2" />
-                    Change Logo
+                    <div className="flex flex-col items-center">
+                      <Upload size={24} className="mb-2" />
+                      Change Logo
+                    </div>
                  </label>
               </div>
 
@@ -189,11 +191,44 @@ export const POTemplateSettings: React.FC = () => {
               )}
            </div>
 
+           {/* Live Visual Preview */}
+           <div className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 shadow-sm space-y-6">
+              <div className="flex items-center gap-3 border-b pb-4">
+                <Eye size={20} className="text-emerald-500" />
+                <h4 className="text-sm font-black uppercase tracking-widest">Document Preview</h4>
+              </div>
+              
+              <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 scale-90 origin-top shadow-inner pointer-events-none">
+                <div className="flex justify-between items-start mb-6">
+                  {config.logoUrl ? (
+                    <img src={config.logoUrl} alt="Logo" className="h-10 object-contain" />
+                  ) : (
+                    <Building2 className="text-slate-300" size={32} />
+                  )}
+                  <div className="text-right">
+                    <p className="text-[8px] font-black text-slate-900 uppercase">Purchase Order</p>
+                    <p className="text-[6px] text-slate-400">#PO-PREVIEW</p>
+                  </div>
+                </div>
+                <div className="space-y-1 mb-6">
+                  <p className="text-[8px] font-black text-slate-900">{config.companyName || 'Entity Name'}</p>
+                  <p className="text-[6px] text-slate-500 line-clamp-2 max-w-[120px]">{config.address || 'Address'}</p>
+                  <p className="text-[6px] font-bold text-emerald-600 mt-1">GSTIN: {config.gstin}</p>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full mb-2"></div>
+                <div className="w-2/3 h-2 bg-slate-100 rounded-full mb-2"></div>
+                <div className="w-full h-2 bg-slate-100 rounded-full"></div>
+                <div className="mt-6 pt-4 border-t border-slate-200">
+                  <p className="text-[6px] font-black text-slate-300 uppercase tracking-widest text-center">Final Document Ready</p>
+                </div>
+              </div>
+           </div>
+
            <div className="bg-slate-900 p-10 rounded-[3rem] text-white space-y-4">
               <Globe className="text-emerald-500" size={32} />
-              <h4 className="text-xl font-black">Statutory Ready</h4>
+              <h4 className="text-xl font-black">Statutory Compliant</h4>
               <p className="text-slate-400 text-xs font-medium leading-relaxed">
-                 These details will be used to generate GST-compliant Purchase Order documents. Ensure your GSTIN is accurate to avoid fulfillment delays.
+                 These details generate GST-compliant Purchase Order documents. Changes are reflected instantly across all generated PDF outputs.
               </p>
            </div>
         </div>
