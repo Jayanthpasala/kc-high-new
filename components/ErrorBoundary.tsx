@@ -1,5 +1,4 @@
-
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -13,10 +12,10 @@ interface State {
 
 /**
  * Standard React Error Boundary component.
- * Fix: Explicitly declare state and props to ensure they are correctly typed and accessible via 'this'.
+ * Fixed inheritance issue where inherited properties like setState and props were not being recognized.
  */
-class ErrorBoundary extends Component<Props, State> {
-  // Fix: Declare state as a property to ensure it is recognized by TypeScript and matches State interface
+class ErrorBoundary extends React.Component<Props, State> {
+  // Explicitly initialize state
   public state: State = {
     hasError: false,
     error: undefined
@@ -30,13 +29,12 @@ class ErrorBoundary extends Component<Props, State> {
     console.error("Uncaught error in module:", error, errorInfo);
   }
 
-  // Fix: Use arrow function to maintain lexical 'this' context for inherited setState method
+  // Use arrow function for lexical binding of 'this'
   private handleReset = () => {
     this.setState({ hasError: false, error: undefined });
   };
 
   public render() {
-    // Fix: Access state property inherited from React.Component correctly via this.state
     if (this.state.hasError) {
       return (
         <div className="bg-rose-50 p-10 rounded-[2.5rem] border-2 border-dashed border-rose-200 text-center animate-in fade-in duration-500">
@@ -65,7 +63,6 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fix: Access children from props property inherited from React.Component
     return this.props.children;
   }
 }
