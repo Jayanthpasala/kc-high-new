@@ -1,8 +1,9 @@
 
 import React, { useEffect, useState } from 'react';
-import { DASHBOARD_CARDS } from '../constants';
 import { PageId } from '../types';
-import { Inbox, ChevronRight, TrendingUp, ArrowUpRight, ChefHat, AlertTriangle, History, ShoppingBag } from 'lucide-react';
+import { TrendingUp, ArrowUpRight, ChefHat, AlertTriangle, History } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, onSnapshot, query } from 'firebase/firestore';
 
 interface DashboardProps {
   onNavigate: (page: PageId) => void;
@@ -21,39 +22,54 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigate }) => {
   });
 
   useEffect(() => {
-    const loadStats = () => {
+    // 1. Listen to Firestore Inventory for real-time valuation and stock status
+    const unsubInv = onSnapshot(collection(db, "inventory"), (snapshot) => {
+      const inventory = snapshot.docs.map(doc => doc.data());
+      const activeCount = inventory.length;
+      const lowStock = inventory.filter((i: any) => {
+        const available = (i.quantity || 0) - (i.reserved || 0);
+        return available <= (i.reorderLevel || 0);
+      }).length;
+      const totalValue = inventory.reduce((acc: number, item: any) => 
+        acc + ((item.quantity || 0) * (item.lastPrice || 0)), 0
+      );
+
+      setStats(prev => ({
+        ...prev,
+        activeInventoryCount: activeCount,
+        lowStockCount: lowStock,
+        totalStockValue: totalValue
+      }));
+    });
+
+    // 2. Load other stats from local systems (Recipes and Plans)
+    const loadLocalStats = () => {
       const recipes = JSON.parse(localStorage.getItem('recipes') || '[]');
       const pendingRecipes = JSON.parse(localStorage.getItem('pendingRecipes') || '[]');
-      const inventory = JSON.parse(localStorage.getItem('inventory') || '[]');
       const plans = JSON.parse(localStorage.getItem('productionPlans') || '[]');
       const pos = JSON.parse(localStorage.getItem('purchaseOrders') || '[]');
       const vendors = JSON.parse(localStorage.getItem('vendors') || '[]');
 
       const todayStr = new Date().toISOString().split('T')[0];
       const todaysPlans = plans.filter((p: any) => p.date === todayStr);
-      
-      const lowStock = inventory.filter((i: any) => {
-        const available = i.quantity - (i.reserved || 0);
-        return available <= (i.reorderLevel || 0);
-      });
-
       const openPOs = pos.filter((p: any) => p.status === 'pending');
 
-      setStats({
+      setStats(prev => ({
+        ...prev,
         recipesCount: recipes.length,
         pendingRecipesCount: pendingRecipes.length,
-        activeInventoryCount: inventory.length,
-        lowStockCount: lowStock.length,
         todaysProduction: todaysPlans.length,
         openPOs: openPOs.length,
-        activeVendors: vendors.length,
-        totalStockValue: inventory.reduce((acc: number, item: any) => acc + (item.quantity * (item.lastPrice || 0)), 0)
-      });
+        activeVendors: vendors.length
+      }));
     };
 
-    loadStats();
-    window.addEventListener('storage', loadStats);
-    return () => window.removeEventListener('storage', loadStats);
+    loadLocalStats();
+    window.addEventListener('storage', loadLocalStats);
+    return () => {
+      unsubInv();
+      window.removeEventListener('storage', loadLocalStats);
+    };
   }, []);
 
   return (

@@ -27,6 +27,8 @@ import {
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProductionPlan, Recipe, InventoryItem, Meal, ConsumptionRecord, DishDetail } from '../types';
 import { RecipeManagement } from './RecipeManagement';
+import { db } from '../firebase';
+import { collection, onSnapshot, query, getDocs, writeBatch, doc } from 'firebase/firestore';
 
 const generateId = () => Math.random().toString(36).substring(2, 11);
 const cleanJson = (text: string) => text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -236,43 +238,66 @@ export const ProductionPlanning: React.FC = () => {
     loadData();
   };
 
-  const toggleConsumption = (plan: ProductionPlan) => {
+  const toggleConsumption = async (plan: ProductionPlan) => {
     if (plan.isConsumed) return;
 
-    // Verify all dishes are mapped before allowing consumption
     const unmappedDishes = plan.meals.flatMap(m => m.dishes).filter(d => !recipes.some(r => r.name.toLowerCase() === d.toLowerCase()));
     if (unmappedDishes.length > 0) {
       alert(`Safety Lock: Defined recipes are missing for: ${unmappedDishes.join(', ')}. Please map them before deductions.`);
       return;
     }
 
-    const inventory: InventoryItem[] = JSON.parse(localStorage.getItem('inventory') || '[]');
-    let updatedInv = [...inventory];
+    setIsProcessing(true);
+    try {
+      const invSnapshot = await getDocs(collection(db, "inventory"));
+      const inventory = invSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
+      const batch = writeBatch(db);
+      
+      let itemsToDeduct: Record<string, number> = {};
 
-    plan.meals.forEach((meal, mi) => {
-      const details = editMeals[mi].dishDetails || [];
-      details.forEach((dish, di) => {
-        const recipe = recipes.find(r => r.name.toLowerCase() === dish.name.toLowerCase());
-        const cookedQty = dish.amountCooked || 0;
-        
-        if (recipe && cookedQty > 0) {
-          recipe.ingredients.forEach(ing => {
-            const idx = updatedInv.findIndex(i => i.name.toLowerCase() === ing.name.toLowerCase());
-            if (idx > -1) {
-              const deduction = ing.amount * (ing.conversionFactor || 1.0) * cookedQty;
-              updatedInv[idx].quantity = Math.max(0, updatedInv[idx].quantity - deduction);
-            }
+      plan.meals.forEach((meal, mi) => {
+        const details = editMeals[mi].dishDetails || [];
+        details.forEach((dish) => {
+          const recipe = recipes.find(r => r.name.toLowerCase() === dish.name.toLowerCase());
+          const cookedQty = dish.amountCooked || 0;
+          
+          if (recipe && cookedQty > 0) {
+            recipe.ingredients.forEach(ing => {
+              const invItem = inventory.find(i => i.name.toLowerCase() === ing.name.toLowerCase());
+              if (invItem) {
+                const deduction = ing.amount * (ing.conversionFactor || 1.0) * cookedQty;
+                itemsToDeduct[invItem.id] = (itemsToDeduct[invItem.id] || 0) + deduction;
+              }
+            });
+          }
+        });
+      });
+
+      Object.entries(itemsToDeduct).forEach(([id, amt]) => {
+        const invItem = inventory.find(i => i.id === id);
+        if (invItem) {
+          const newQty = Math.max(0, (invItem.quantity || 0) - amt);
+          batch.update(doc(db, "inventory", id), {
+            quantity: newQty,
+            status: newQty <= (invItem.reorderLevel || 0) ? (newQty <= 0 ? 'out' : 'low') : 'healthy'
           });
         }
       });
-    });
 
-    const updated = { ...plan, isConsumed: true, headcounts: editHeadcounts, meals: editMeals };
-    mockFirestore.save(updated);
-    localStorage.setItem('inventory', JSON.stringify(updatedInv));
-    loadData();
-    setDayPlan(updated);
-    window.dispatchEvent(new Event('storage'));
+      await batch.commit();
+      
+      const updated = { ...plan, isConsumed: true, headcounts: editHeadcounts, meals: editMeals };
+      mockFirestore.save(updated);
+      loadData();
+      setDayPlan(updated);
+      window.dispatchEvent(new Event('storage'));
+      alert("Inventory successfully updated based on production logs.");
+    } catch (err) {
+      console.error(err);
+      alert("Failure updating stock levels in Cloud Registry.");
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const renderCalendarGrid = () => {
@@ -326,8 +351,8 @@ export const ProductionPlanning: React.FC = () => {
         <div className="fixed inset-0 z-[100] bg-slate-950/40 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-white p-12 rounded-[3rem] shadow-2xl text-center max-w-sm w-full animate-in zoom-in-95">
             <Loader2 className="animate-spin mx-auto text-emerald-500 mb-6" size={64} />
-            <h3 className="text-2xl font-black text-slate-900">Syncing BOM</h3>
-            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">AI Extraction Protocol In-Progress</p>
+            <h3 className="text-2xl font-black text-slate-900">Processing Cloud Assets</h3>
+            <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">Deducting material volumes...</p>
           </div>
         </div>
       )}
@@ -416,7 +441,7 @@ export const ProductionPlanning: React.FC = () => {
         </div>
       )}
 
-      {/* Detailed Day Modal (Restored Edit Functionality) */}
+      {/* Detailed Day Modal */}
       {isDayModalOpen && selectedDate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xl animate-in fade-in">
            <div className="bg-white rounded-[4rem] w-full max-w-3xl overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col max-h-[90vh] animate-in zoom-in-95">
@@ -433,7 +458,6 @@ export const ProductionPlanning: React.FC = () => {
                    <>
                      {dayPlan ? (
                        <div className="space-y-10">
-                          {/* Top Actions */}
                           <div className="flex justify-between items-center">
                              <div className={`px-5 py-2 rounded-2xl text-[10px] font-black uppercase border-2 ${dayPlan.isConsumed ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
                                 {dayPlan.isConsumed ? 'Production Cycle Logged' : 'Active Batch'}
@@ -551,7 +575,6 @@ export const ProductionPlanning: React.FC = () => {
                    </>
                  ) : (
                    <div className="space-y-10 animate-in slide-in-from-right-10 duration-500">
-                      {/* Edit/Create Interface */}
                       <div className="space-y-8">
                          {editMeals.map((m, mi) => (
                             <div key={mi} className="bg-slate-50 p-8 rounded-[3rem] border-2 border-slate-100">

@@ -72,7 +72,6 @@ export const InventoryManagement: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Fix: Use process.env.API_KEY directly as per Gemini API rules and avoid window.process error
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
         alert("System Configuration Error: API Key missing from environment.");
@@ -81,11 +80,8 @@ export const InventoryManagement: React.FC = () => {
 
     setIsProcessing(true);
     try {
-      // Fix: Initialize GoogleGenAI with named apiKey parameter and use gemini-3-flash-preview model
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
       let promptText = `Extract inventory items from this file. Return a JSON array of objects with name, quantity, unit, lastPrice, brand, and category.`;
-
       let parts: any[] = [];
       
       if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
@@ -182,7 +178,7 @@ export const InventoryManagement: React.FC = () => {
           <h2 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tighter flex items-center gap-4">
             <Scale className="text-emerald-500" size={40} /> Raw Material Hub
           </h2>
-          <p className="text-slate-500 font-bold mt-2 uppercase text-[11px] tracking-[0.2em]">Live Registry & Smart Cost Control</p>
+          <p className="text-slate-500 font-bold mt-2 uppercase text-[11px] tracking-[0.2em]">Live Registry & Financial Linkage</p>
         </div>
         <div className="flex flex-wrap gap-4">
           <input type="file" id="inv-import" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
@@ -212,12 +208,13 @@ export const InventoryManagement: React.FC = () => {
 
       <div className="bg-white rounded-[3.5rem] border-2 border-slate-100 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left min-w-[800px]">
+          <table className="w-full text-left min-w-[900px]">
             <thead className="bg-slate-50/50">
               <tr>
                 <th className="px-10 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Asset</th>
                 <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Quantity</th>
-                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Price</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Unit Price</th>
+                <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Total Value</th>
                 <th className="px-8 py-8 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                 <th className="px-10 py-8 text-right"></th>
               </tr>
@@ -235,7 +232,10 @@ export const InventoryManagement: React.FC = () => {
                   <td className="px-8 py-8 text-right">
                     <p className="font-black text-slate-900 text-2xl tracking-tighter">{item.quantity} <span className="text-xs font-medium text-slate-400 uppercase">{item.unit}</span></p>
                   </td>
-                  <td className="px-8 py-8 text-right font-black text-slate-900 text-xl">₹{item.lastPrice}</td>
+                  <td className="px-8 py-8 text-right font-black text-slate-900 text-xl">₹{item.lastPrice || 0}</td>
+                  <td className="px-8 py-8 text-right">
+                    <p className="font-black text-emerald-600 text-2xl tracking-tighter">₹{((item.quantity || 0) * (item.lastPrice || 0)).toLocaleString()}</p>
+                  </td>
                   <td className="px-8 py-8">
                      <div className={`px-4 py-2 rounded-2xl border-2 text-[10px] font-black uppercase tracking-widest flex items-center gap-2 w-fit ${getStatus(item.quantity, item.reorderLevel, item.reserved || 0) === 'healthy' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-rose-50 text-rose-700 border-rose-100'}`}>
                         {getStatus(item.quantity, item.reorderLevel, item.reserved || 0)}
