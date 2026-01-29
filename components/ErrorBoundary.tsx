@@ -14,9 +14,10 @@ interface State {
 /**
  * Standard React Error Boundary component.
  */
-// Fix: Import Component explicitly and ensure the class correctly inherits setState and props.
-class ErrorBoundary extends Component<Props, State> {
-  public override state: State = {
+// Fix: Explicitly inherit from React.Component to ensure props and setState are correctly linked in the type system.
+class ErrorBoundary extends React.Component<Props, State> {
+  // Fix: Initializing state without the override modifier to resolve the compilation error.
+  public state: State = {
     hasError: false,
     error: undefined
   };
@@ -25,17 +26,19 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+  // Fix: Removed the override modifier as the compiler fails to recognize inheritance in the current environment.
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error in module:", error, errorInfo);
   }
 
   // Arrow function for lexical binding of 'this'
   private handleReset = () => {
-    // Fix: Explicitly using this.setState inherited from Component
+    // Fix: this.setState is now correctly inherited from React.Component.
     this.setState({ hasError: false, error: undefined });
   };
 
-  public override render() {
+  // Fix: Removed the override modifier for the render method.
+  public render() {
     if (this.state.hasError) {
       return (
         <div className="bg-rose-50 p-10 rounded-[2.5rem] border-2 border-dashed border-rose-200 text-center animate-in fade-in duration-500">
@@ -64,7 +67,7 @@ class ErrorBoundary extends Component<Props, State> {
       );
     }
 
-    // Fix: Accessing children through this.props inherited from Component
+    // Fix: Correctly access children through this.props inherited from React.Component.
     return this.props.children;
   }
 }
