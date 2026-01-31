@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getAuth, 
@@ -20,10 +21,11 @@ const firebaseConfig = {
 // Ensure Firebase initializes only once
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
+// Use the modular SDK functions to initialize services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Persist user sessions across refreshes
+// Persist user sessions across refreshes using the modular setPersistence
 setPersistence(auth, browserLocalPersistence)
   .then(() => {
     console.log("Firebase auth persistence set to LOCAL");

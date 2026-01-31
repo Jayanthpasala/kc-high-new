@@ -268,7 +268,7 @@ export const VendorManagement: React.FC = () => {
 
       {isModalOpen && editingVendor && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3.5rem] w-full max-w-7xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col lg:flex-row animate-in zoom-in-95 duration-500">
+          <div className="bg-white rounded-[3.5rem] w-full max-w-7xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col lg:flex-row animate-in zoom-in-95 duration-500 max-h-[90vh] lg:max-h-full overflow-y-auto">
             <div className="w-full lg:w-80 bg-slate-900 p-8 sm:p-10 flex flex-col shrink-0 overflow-y-auto max-h-[30vh] lg:max-h-full">
                <nav className="flex-1 space-y-3">
                   {[

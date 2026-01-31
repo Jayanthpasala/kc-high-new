@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { PageId, UserProfile, UserRole } from './types';
 import { Sidebar } from './components/Sidebar';
@@ -16,7 +17,7 @@ import { UserManagement } from './components/UserManagement';
 import { BrandManagement } from './components/BrandManagement';
 import { Login } from './components/Login';
 import { auth, db } from './firebase';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, type User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 import ErrorBoundary from './components/ErrorBoundary';

@@ -129,8 +129,9 @@ export const InventoryManagement: React.FC = () => {
         ];
       }
 
+      // Use gemini-3-pro-preview for structured data extraction from images/PDFs
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3-pro-preview',
         contents: { parts },
         config: {
           responseMimeType: "application/json",
@@ -152,6 +153,7 @@ export const InventoryManagement: React.FC = () => {
         }
       });
 
+      // Directly access .text property
       const rawResults = JSON.parse(response.text || '[]');
       
       // AI-side deduplication check against local state
