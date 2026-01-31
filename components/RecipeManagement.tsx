@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { Recipe, Ingredient, InventoryItem } from '../types';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc } from 'firebase/firestore';
 
 const INITIAL_FORM_STATE: Partial<Recipe> = {
   name: '',
@@ -47,17 +47,14 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
   const [isInvDropdownOpen, setIsInvDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const loadData = useCallback(() => {
-    const stored = localStorage.getItem('recipes');
-    setRecipes(stored ? JSON.parse(stored) : []);
-  }, []);
-
   useEffect(() => {
-    loadData();
-    
-    // Subscribe to Firestore Inventory for the material dropdown
-    const q = query(collection(db, "inventory"), orderBy("name"));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    // Sync Recipes from Firestore
+    const unsubRecipes = onSnapshot(collection(db, "recipes"), (snap) => {
+      setRecipes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recipe)));
+    });
+
+    // Sync Inventory for Material Dropdown
+    const unsubInv = onSnapshot(query(collection(db, "inventory"), orderBy("name")), (snapshot) => {
       setInventory(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem)));
     });
 
@@ -67,10 +64,12 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
       setIsModalOpen(true);
     }
 
-    return () => unsubscribe();
-  }, [initialDishName, loadData]);
+    return () => {
+      unsubRecipes();
+      unsubInv();
+    };
+  }, [initialDishName]);
 
-  // Handle outside clicks to close dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -81,56 +80,39 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name || (formData.ingredients || []).length === 0) {
       alert('Validation Error: Recipe identity and at least one material linkage required.');
       return;
     }
 
-    const currentRecipes = JSON.parse(localStorage.getItem('recipes') || '[]');
-    let updated: Recipe[];
-
-    if (editingRecipe) {
-      updated = currentRecipes.map((r: Recipe) => r.id === editingRecipe.id ? { ...r, ...formData } as Recipe : r);
-    } else {
-      const newRecipe = { 
-        id: Math.random().toString(36).substr(2, 9), 
-        ...formData 
-      } as Recipe;
-      updated = [newRecipe, ...currentRecipes];
+    const recipeId = editingRecipe?.id || Math.random().toString(36).substr(2, 9);
+    
+    try {
+      await setDoc(doc(db, "recipes", recipeId), { ...formData, id: recipeId });
+      setIsModalOpen(false);
+      if (onComplete) onComplete(formData.name!);
+    } catch (e) {
+      alert("Failed to sync recipe to cloud.");
     }
-
-    localStorage.setItem('recipes', JSON.stringify(updated));
-    setRecipes(updated);
-
-    // Sync pending recipes if applicable
-    const pending = JSON.parse(localStorage.getItem('pendingRecipes') || '[]');
-    const updatedPending = pending.filter((d: string) => d.toLowerCase() !== formData.name?.toLowerCase());
-    localStorage.setItem('pendingRecipes', JSON.stringify(updatedPending));
-
-    setIsModalOpen(false);
-    window.dispatchEvent(new Event('storage'));
-    if (onComplete) onComplete(formData.name!);
   };
 
   const addLinkedIngredient = (item: InventoryItem) => {
-    // PREVENT DUPLICATION: Check if this specific material (name + brand) is already linked
     const exists = formData.ingredients?.some(i => 
       i.name.toLowerCase() === item.name.toLowerCase() && 
       (i.brand || '').toLowerCase() === (item.brand || '').toLowerCase()
     );
 
     if (exists) {
-      alert(`Asset Link Error: "${item.name}" from brand "${item.brand || 'Generic'}" is already present in this Bill of Materials.`);
+      alert(`Asset Link Error: Already present in this BOM.`);
       setIsInvDropdownOpen(false);
-      setInvSearch('');
       return;
     }
 
     const newIng: Ingredient = {
       name: item.name,
       brand: item.brand || '',
-      amount: 1, // Default 1 unit of raw material
+      amount: 1,
       unit: item.unit,
       inventoryItemId: item.id,
       conversionFactor: 1.0
@@ -164,7 +146,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
             <BookOpen className="text-emerald-500" size={32} /> Recipe Studio
           </h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Scaling logic: Configure spec per 1.0 unit (kg/L) of cooked volume.</p>
+          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Cloud Master Recipes: Synced across all kitchen devices.</p>
         </div>
         <button onClick={() => { setEditingRecipe(null); setFormData(INITIAL_FORM_STATE); setIsModalOpen(true); }} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 hover:bg-emerald-600 transition-all shadow-xl group">
           <PlusCircle size={18} className="group-hover:rotate-90 transition-all" />
@@ -187,7 +169,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                </div>
                <div className="flex gap-2">
                   <button onClick={() => { setEditingRecipe(recipe); setFormData(recipe); setIsModalOpen(true); }} className="p-3 bg-white text-slate-400 hover:text-emerald-500 rounded-xl shadow-sm border border-slate-100"><Edit3 size={18} /></button>
-                  <button onClick={() => { if(confirm("Delete this master specification?")) { const up = recipes.filter(r => r.id !== recipe.id); setRecipes(up); localStorage.setItem('recipes', JSON.stringify(up)); window.dispatchEvent(new Event('storage')); }}} className="p-3 bg-white text-slate-400 hover:text-rose-500 rounded-xl shadow-sm border border-slate-100"><Trash2 size={18} /></button>
+                  <button onClick={async () => { if(confirm("Delete this master specification?")) { await deleteDoc(doc(db, "recipes", recipe.id)); }}} className="p-3 bg-white text-slate-400 hover:text-rose-500 rounded-xl shadow-sm border border-slate-100"><Trash2 size={18} /></button>
                </div>
             </div>
           </div>
@@ -290,12 +272,6 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
                               </div>
                            </div>
                          ))}
-                         {(!formData.ingredients || formData.ingredients.length === 0) && (
-                            <div className="py-20 text-center bg-slate-50/50 rounded-[3rem] border-4 border-dashed border-slate-100">
-                               <Package size={48} className="text-slate-200 mx-auto mb-4" />
-                               <p className="text-slate-400 font-bold text-sm">Select unique raw materials to link your specification to inventory levels.</p>
-                            </div>
-                         )}
                       </div>
                    </div>
 
@@ -320,7 +296,7 @@ export const RecipeManagement: React.FC<RecipeManagementProps> = ({ initialDishN
              <div className="p-10 bg-slate-50 border-t-2 border-slate-100 flex flex-col sm:flex-row justify-end gap-6 shrink-0">
                 <button onClick={() => setIsModalOpen(false)} className="px-10 py-5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600 transition-colors">Discard Draft</button>
                 <button onClick={handleSave} className="bg-slate-900 text-white px-14 py-5 rounded-3xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-4 shadow-2xl hover:bg-emerald-600 transition-all active:scale-95">
-                   <Save size={20} /> Finalize BOM & SOP
+                   <Save size={20} /> Sync Specification
                 </button>
              </div>
           </div>

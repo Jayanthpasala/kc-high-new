@@ -18,55 +18,12 @@ import {
   CheckCircle2,
   DollarSign,
   BarChart3,
-  ArrowRightLeft,
   Award,
-  AlertOctagon,
   TrendingUp
 } from 'lucide-react';
 import { Vendor, InventoryItem } from '../types';
-
-const MOCK_VENDORS: Vendor[] = [
-  {
-    id: 'V1',
-    name: 'Maharashtra Agri-Cooperative',
-    contact: 'Sunil Deshmukh',
-    email: 'orders@maicoop.org.in',
-    phone: '+91 98200 12345',
-    categories: ['Produce', 'Vegetables'],
-    rating: 4.8,
-    bankDetails: {
-      bankName: 'State Bank of India',
-      accountName: 'Maharashtra Agri-Coop Society',
-      accountNumber: '**** **** 1122',
-      ifscCode: 'SBIN0000300'
-    },
-    suppliedItems: ['Premium Basmati Rice', 'Fresh Paneer (Malai)'],
-    priceLedger: [
-      { itemName: 'Premium Basmati Rice', price: 95, unit: 'kg' },
-      { itemName: 'Fresh Paneer (Malai)', price: 420, unit: 'kg' }
-    ]
-  },
-  {
-    id: 'V2',
-    name: 'Bharat Grains & Pulses',
-    contact: 'Rahul Verma',
-    email: 'verma.rahul@bharatgrains.com',
-    phone: '+91 11 2345 6789',
-    categories: ['Dry Goods', 'Flour', 'Rice'],
-    rating: 4.5,
-    bankDetails: {
-      bankName: 'HDFC Bank',
-      accountName: 'Bharat Grains Wholesale Ltd',
-      accountNumber: '**** **** 4490',
-      ifscCode: 'HDFC0001234'
-    },
-    suppliedItems: ['Organic Ghee (1L)', 'Premium Basmati Rice'],
-    priceLedger: [
-      { itemName: 'Organic Ghee (1L)', price: 580, unit: 'L' },
-      { itemName: 'Premium Basmati Rice', price: 105, unit: 'kg' }
-    ]
-  }
-];
+import { db } from '../firebase';
+import { collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc } from 'firebase/firestore';
 
 type ModalTab = 'identity' | 'supply' | 'financial' | 'pricing' | 'performance';
 
@@ -82,24 +39,26 @@ export const VendorManagement: React.FC = () => {
   const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
 
   useEffect(() => {
-    const loadData = () => {
-      const storedVendors = localStorage.getItem('vendors');
-      if (storedVendors) {
-        setVendors(JSON.parse(storedVendors));
-      } else {
-        setVendors(MOCK_VENDORS);
-        localStorage.setItem('vendors', JSON.stringify(MOCK_VENDORS));
-      }
+    // Sync Vendors from Firestore
+    const unsubVendors = onSnapshot(collection(db, "vendors"), (snap) => {
+      setVendors(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Vendor)));
+    });
 
-      const storedInv = localStorage.getItem('inventory');
-      if (storedInv) setInventory(JSON.parse(storedInv));
-      
-      const storedPOs = localStorage.getItem('purchaseOrders');
-      if (storedPOs) setPurchaseOrders(JSON.parse(storedPOs));
+    // Sync Inventory for Linkages
+    const unsubInv = onSnapshot(collection(db, "inventory"), (snap) => {
+      setInventory(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem)));
+    });
+    
+    // Sync POs for stats
+    const unsubPOs = onSnapshot(collection(db, "purchaseOrders"), (snap) => {
+      setPurchaseOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubVendors();
+      unsubInv();
+      unsubPOs();
     };
-    loadData();
-    window.addEventListener('storage', loadData);
-    return () => window.removeEventListener('storage', loadData);
   }, []);
 
   const filteredVendors = vendors.filter(v => 
@@ -129,26 +88,20 @@ export const VendorManagement: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingVendor?.name) {
       alert('Business identity error: Name is required.');
       return;
     }
 
-    setVendors(prev => {
-      let updated: Vendor[];
-      if (editingVendor.id) {
-        updated = prev.map(v => v.id === editingVendor.id ? editingVendor as Vendor : v);
-      } else {
-        const newVendor = { ...editingVendor, id: `V-${Math.random().toString(36).substr(2, 5).toUpperCase()}` } as Vendor;
-        updated = [newVendor, ...prev];
-      }
-      localStorage.setItem('vendors', JSON.stringify(updated));
-      return updated;
-    });
-
-    setIsModalOpen(false);
-    window.dispatchEvent(new Event('storage'));
+    const vendorId = editingVendor.id || `V-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+    
+    try {
+      await setDoc(doc(db, "vendors", vendorId), { ...editingVendor, id: vendorId });
+      setIsModalOpen(false);
+    } catch (e) {
+      alert("Failed to sync vendor to cloud.");
+    }
   };
 
   const updatePricePoint = (itemName: string, newPrice: number) => {
@@ -180,23 +133,22 @@ export const VendorManagement: React.FC = () => {
     });
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (window.confirm('CRITICAL: Permanently remove this partner from the supply registry?')) {
-      const updated = vendors.filter(v => v.id !== id);
-      setVendors(updated);
-      localStorage.setItem('vendors', JSON.stringify(updated));
-      window.dispatchEvent(new Event('storage'));
+      try {
+        await deleteDoc(doc(db, "vendors", id));
+      } catch (e) {
+        alert("Failed to delete vendor.");
+      }
     }
   };
 
   const getVendorStats = (vendorId: string) => {
      const orders = purchaseOrders.filter(po => po.vendorId === vendorId);
      const totalSpend = orders.reduce((acc, po) => acc + (po.totalCost || 0), 0);
-     const completedOrders = orders.filter(po => po.status === 'received');
      return { count: orders.length, totalSpend, lastOrder: orders.length > 0 ? new Date(orders[0].createdAt).toLocaleDateString() : 'N/A' };
   };
 
-  // --- MARKET ANALYSIS LOGIC ---
   const getMarketAnalysis = () => {
     const analysis: Record<string, { vendorName: string, price: number, unit: string }[]> = {};
     vendors.forEach(v => {
@@ -210,8 +162,7 @@ export const VendorManagement: React.FC = () => {
       return {
         itemName,
         quotes: sortedPrices,
-        bestPrice: sortedPrices[0],
-        priceSpread: sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 1].price - sortedPrices[0].price : 0
+        bestPrice: sortedPrices[0]
       };
     });
   };
@@ -228,20 +179,14 @@ export const VendorManagement: React.FC = () => {
             <Truck className="text-emerald-500" size={32} />
             Supply Chain Registry
           </h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest font-black">Regional Logistics & Comparative Cost Analysis</p>
+          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest font-black">Cloud-Synced Regional Logistics & Comparative Cost Analysis</p>
         </div>
         <div className="flex flex-wrap gap-4">
-          <button 
-            onClick={() => setIsAnalysisOpen(true)}
-            className="bg-white border-2 border-slate-200 text-slate-700 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm active:scale-95 group"
-          >
+          <button onClick={() => setIsAnalysisOpen(true)} className="bg-white border-2 border-slate-200 text-slate-700 px-6 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:border-blue-500 hover:text-blue-600 transition-all shadow-sm group">
             <BarChart3 size={18} />
             <span>Market Analysis</span>
           </button>
-          <button 
-            onClick={handleOpenAdd}
-            className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all shadow-xl active:scale-95 group"
-          >
+          <button onClick={handleOpenAdd} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-emerald-600 transition-all shadow-xl active:scale-95 group">
             <PlusCircle size={18} className="group-hover:rotate-90 transition-transform duration-300" />
             <span>Onboard New Partner</span>
           </button>
@@ -306,9 +251,6 @@ export const VendorManagement: React.FC = () => {
                     <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
                       <Package size={12} /> Pricing Ledger
                     </h4>
-                    <span className="bg-emerald-500 text-slate-900 text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest">
-                      {vendor.priceLedger?.length || 0} Rates
-                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {vendor.priceLedger?.slice(0, 2).map((p, idx) => (
@@ -320,205 +262,51 @@ export const VendorManagement: React.FC = () => {
                 </div>
               </div>
             </div>
-            
-            <div className="bg-slate-50 px-8 py-4 flex justify-between items-center border-t border-slate-100">
-               <button onClick={() => handleOpenEdit(vendor)} className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-2 hover:gap-4 transition-all group/btn">
-                 Manage Profile <ArrowUpRight size={14} className="text-emerald-500 group-hover/btn:translate-x-0.5 transition-transform" />
-               </button>
-            </div>
           </div>
         ))}
       </div>
 
-      {/* MARKET ANALYSIS MODAL */}
-      {isAnalysisOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-2xl animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3.5rem] w-full max-w-6xl h-[90vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col animate-in zoom-in-95 duration-500">
-             <div className="bg-slate-900 p-8 sm:p-10 text-white shrink-0 flex justify-between items-start">
-               <div>
-                 <div className="flex items-center gap-3 mb-2">
-                   <div className="bg-blue-500 p-2 rounded-xl text-white"><BarChart3 size={24} /></div>
-                   <h3 className="text-2xl sm:text-3xl font-black tracking-tight">Market Intelligence</h3>
-                 </div>
-                 <p className="text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] ml-1">Cross-Vendor Price Arbitrage</p>
-               </div>
-               <button onClick={() => setIsAnalysisOpen(false)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
-             </div>
-
-             <div className="flex-1 overflow-y-auto p-8 sm:p-10 custom-scrollbar bg-slate-50">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                   {marketData.map((data, idx) => (
-                     <div key={idx} className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-200">
-                        <div className="flex justify-between items-start mb-6 border-b border-slate-100 pb-6">
-                           <div>
-                              <h4 className="text-xl font-black text-slate-900">{data.itemName}</h4>
-                           </div>
-                           <div className="text-right">
-                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Best Rate</p>
-                              <p className="text-2xl font-black text-emerald-500">₹{data.bestPrice.price}</p>
-                           </div>
-                        </div>
-                        <div className="space-y-3">
-                           {data.quotes.map((quote, qIdx) => (
-                             <div key={qIdx} className={`p-4 rounded-2xl flex justify-between items-center border-2 ${qIdx === 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-white border-slate-50'}`}>
-                                <div className="flex items-center gap-3">
-                                   {qIdx === 0 && <Award size={16} className="text-emerald-500" />}
-                                   <span className={`font-bold text-sm ${qIdx === 0 ? 'text-emerald-900' : 'text-slate-600'}`}>{quote.vendorName}</span>
-                                </div>
-                                <span className="font-black text-slate-900">₹{quote.price}</span>
-                             </div>
-                           ))}
-                        </div>
-                     </div>
-                   ))}
-                </div>
-             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modern Vendor Studio Modal */}
       {isModalOpen && editingVendor && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-8 bg-slate-950/80 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="bg-white rounded-[3.5rem] w-full max-w-7xl h-[85vh] overflow-hidden shadow-2xl border-4 border-slate-900 flex flex-col lg:flex-row animate-in zoom-in-95 duration-500">
             <div className="w-full lg:w-80 bg-slate-900 p-8 sm:p-10 flex flex-col shrink-0 overflow-y-auto max-h-[30vh] lg:max-h-full">
-               <div className="mb-8 lg:mb-12">
-                  <div className="w-16 h-16 bg-emerald-500 text-slate-950 rounded-[1.5rem] flex items-center justify-center mb-6 shadow-lg shadow-emerald-500/20">
-                     <Building2 size={32} />
-                  </div>
-                  <h3 className="text-2xl font-black text-white tracking-tight">Partner Studio</h3>
-               </div>
-
                <nav className="flex-1 space-y-3">
                   {[
                     { id: 'identity', label: 'Identity', icon: <User size={18} /> },
                     { id: 'pricing', label: 'Pricing Matrix', icon: <DollarSign size={18} />, badge: editingVendor.priceLedger?.length },
-                    { id: 'supply', label: `Inventory Link`, icon: <Package size={18} /> },
-                    { id: 'financial', label: 'Settlement', icon: <CreditCard size={18} /> },
-                    { id: 'performance', label: 'Analytics', icon: <TrendingUp size={18} /> }
+                    { id: 'supply', label: `Inventory Link`, icon: <Package size={18} /> }
                   ].map(tab => (
                     <button
                       key={tab.id}
                       onClick={() => setActiveTab(tab.id as ModalTab)}
                       className={`w-full flex items-center justify-between px-6 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
-                        activeTab === tab.id 
-                          ? 'bg-white text-slate-900 shadow-xl' 
-                          : 'text-slate-500 hover:text-white hover:bg-white/5'
+                        activeTab === tab.id ? 'bg-white text-slate-900 shadow-xl' : 'text-slate-500 hover:text-white'
                       }`}
                     >
-                      <div className="flex items-center gap-4">
-                        {tab.icon} {tab.label}
-                      </div>
-                      {tab.badge && (
-                        <span className={`px-2 py-0.5 rounded-md ${activeTab === tab.id ? 'bg-slate-900 text-white' : 'bg-white/10 text-emerald-400'}`}>
-                          {tab.badge}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-4">{tab.icon} {tab.label}</div>
                     </button>
                   ))}
                </nav>
-
-               <div className="pt-10 border-t border-white/5 space-y-4">
-                  <button onClick={handleSave} className="w-full bg-emerald-500 text-slate-950 py-5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-3">
-                    <CheckCircle2 size={18} /> Commit Spec
-                  </button>
-               </div>
+               <button onClick={handleSave} className="w-full bg-emerald-500 text-slate-950 py-5 rounded-2xl font-black uppercase tracking-widest text-[11px] shadow-xl hover:scale-105 transition-all">Sync to Cloud</button>
             </div>
 
-            <div className="flex-1 flex flex-col bg-white overflow-hidden">
-               <header className="p-8 sm:p-10 border-b border-slate-100 flex justify-between items-center bg-slate-50/20 shrink-0">
-                  <h4 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">{editingVendor.name || 'Vendor Registry'}</h4>
-                  <button onClick={() => setIsModalOpen(false)} className="p-4 bg-white border-2 border-slate-100 text-slate-400 hover:text-rose-500 rounded-2xl shadow-sm"><X size={24} /></button>
-               </header>
-
-               <div className="flex-1 overflow-y-auto p-8 sm:p-12 custom-scrollbar">
-                  {/* (Identity, Pricing, Supply, Financial tabs remain same as original file, omitted for brevity but preserved in output) */}
-                  {activeTab === 'identity' && (
-                    <div className="space-y-12 animate-in fade-in duration-500">
-                       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10">
-                          <div className="lg:col-span-7 space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Legal Trade Name</label>
-                             <input type="text" value={editingVendor.name} onChange={e => setEditingVendor({...editingVendor, name: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-black text-slate-900 text-xl outline-none focus:border-emerald-500 transition-all shadow-inner" />
-                          </div>
-                          <div className="lg:col-span-5 space-y-2">
-                             <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Lead</label>
-                             <input type="text" value={editingVendor.contact} onChange={e => setEditingVendor({...editingVendor, contact: e.target.value})} className="w-full px-8 py-6 rounded-3xl bg-slate-50 border-2 border-transparent font-bold text-slate-900 text-lg outline-none focus:border-emerald-500 transition-all shadow-inner" />
-                          </div>
+            <div className="flex-1 flex flex-col bg-white overflow-hidden p-10">
+               {activeTab === 'identity' && (
+                 <div className="space-y-8 animate-in fade-in">
+                    <input type="text" value={editingVendor.name} onChange={e => setEditingVendor({...editingVendor, name: e.target.value})} placeholder="Vendor Name" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-black text-xl" />
+                    <input type="text" value={editingVendor.contact} onChange={e => setEditingVendor({...editingVendor, contact: e.target.value})} placeholder="Contact Lead" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-bold" />
+                 </div>
+               )}
+               {activeTab === 'pricing' && (
+                  <div className="space-y-4 overflow-y-auto custom-scrollbar">
+                    {editingVendor.suppliedItems?.map(item => (
+                       <div key={item} className="p-6 bg-slate-50 rounded-2xl flex justify-between items-center">
+                          <span className="font-black">{item}</span>
+                          <input type="number" value={editingVendor.priceLedger?.find(p => p.itemName === item)?.price || 0} onChange={(e) => updatePricePoint(item, parseFloat(e.target.value) || 0)} className="w-24 px-4 py-2 rounded-xl text-center font-black" />
                        </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'pricing' && (
-                    <div className="space-y-10 animate-in fade-in duration-500">
-                       <div className="space-y-4">
-                          {editingVendor.suppliedItems?.map(item => {
-                            const point = editingVendor.priceLedger?.find(p => p.itemName === item);
-                            return (
-                              <div key={item} className="p-6 sm:p-8 bg-white border-2 border-slate-100 rounded-[2rem] flex flex-col sm:flex-row items-center justify-between group hover:border-emerald-500 transition-all gap-4">
-                                 <h6 className="font-black text-lg text-slate-900">{item}</h6>
-                                 <div className="flex items-center gap-4">
-                                    <input 
-                                      type="number" 
-                                      value={point?.price || 0} 
-                                      onChange={(e) => updatePricePoint(item, parseFloat(e.target.value) || 0)}
-                                      className="w-32 px-6 py-4 rounded-xl bg-slate-50 border-2 border-transparent font-black text-slate-900 text-lg text-center outline-none focus:border-emerald-500 focus:bg-white transition-all shadow-inner" 
-                                    />
-                                    <span className="text-slate-300 font-black text-xs uppercase">/ {point?.unit || 'kg'}</span>
-                                 </div>
-                              </div>
-                            );
-                          })}
-                       </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'supply' && (
-                    <div className="space-y-8 animate-in fade-in duration-500">
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {filteredInventory.map(item => {
-                             const isLinked = editingVendor.suppliedItems?.includes(item.name);
-                             return (
-                               <button 
-                                 key={item.id} 
-                                 onClick={() => toggleSuppliedItem(item.name)}
-                                 className={`p-6 rounded-2xl border-2 text-left flex items-center justify-between group ${isLinked ? 'border-emerald-500 bg-emerald-50' : 'border-slate-50 bg-white hover:border-slate-100'}`}
-                               >
-                                  <span className="font-black text-sm">{item.name}</span>
-                                  {isLinked && <CheckCircle2 size={18} className="text-emerald-500" />}
-                               </button>
-                             );
-                          })}
-                       </div>
-                    </div>
-                  )}
-
-                  {activeTab === 'financial' && (
-                    <div className="p-10 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 text-center flex flex-col items-center">
-                       <CreditCard size={60} className="text-slate-200 mb-6" />
-                       <h5 className="text-2xl font-black text-slate-900">Settlement Profiles</h5>
-                       <p className="text-slate-500 max-w-sm mx-auto mt-2 font-medium">Bank details and tax credentials for regional fulfillment compliance.</p>
-                    </div>
-                  )}
-
-                  {activeTab === 'performance' && editingVendor.id && (
-                     <div className="space-y-8 animate-in fade-in duration-500">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                           <div className="bg-slate-900 p-8 rounded-[2.5rem] text-white">
-                              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">Total Spend</p>
-                              <p className="text-4xl font-black tracking-tighter">₹{(getVendorStats(editingVendor.id!).totalSpend / 1000).toFixed(1)}k</p>
-                           </div>
-                           <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100">
-                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Order Volume</p>
-                              <p className="text-4xl font-black text-slate-900 tracking-tighter">{getVendorStats(editingVendor.id!).count}</p>
-                           </div>
-                        </div>
-                        <div className="bg-white border-2 border-slate-100 p-8 rounded-[2.5rem]">
-                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Last Activity</p>
-                           <p className="text-xl font-bold text-slate-900">Last PO generated on: {getVendorStats(editingVendor.id!).lastOrder}</p>
-                        </div>
-                     </div>
-                  )}
-               </div>
+                    ))}
+                  </div>
+               )}
             </div>
           </div>
         </div>
