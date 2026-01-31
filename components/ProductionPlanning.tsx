@@ -31,33 +31,34 @@ const generateId = () => Math.random().toString(36).substring(2, 11);
 
 /**
  * Enhanced utility to safely extract JSON from model responses.
- * Now handles common AI output quirks more aggressively.
+ * Specifically designed to handle common AI noise and markdown blocks.
  */
 const safeParseAIResponse = (text: string) => {
-  if (!text) throw new Error("Empty response from AI.");
+  if (!text) throw new Error("The AI returned an empty response.");
+  
+  // Clean common AI noise
+  const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
   
   try {
-    // 1. Clean markdown noise
-    const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-    
-    // 2. Try finding the structure if it's buried in text
-    const firstOpen = cleaned.indexOf('[');
-    const lastClose = cleaned.lastIndexOf(']');
-    
-    if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
-      return JSON.parse(cleaned.substring(firstOpen, lastClose + 1));
-    }
-    
-    // 3. Fallback to standard parse
+    // Stage 1: Standard Parse
     return JSON.parse(cleaned);
   } catch (e) {
-    console.error("Critical JSON Parse Error:", text);
-    throw new Error("Invalid JSON structure returned by AI.");
+    try {
+      // Stage 2: Array discovery (finding the first [ and last ])
+      const startIdx = cleaned.indexOf('[');
+      const endIdx = cleaned.lastIndexOf(']');
+      if (startIdx !== -1 && endIdx !== -1) {
+        return JSON.parse(cleaned.substring(startIdx, endIdx + 1));
+      }
+    } catch (e2) {
+      console.error("Critical JSON failure:", cleaned);
+    }
+    throw new Error("The document data was formatted in an unexpected way. Please try a clearer scan.");
   }
 };
 
 export const ProductionPlanning: React.FC = () => {
-  const [view, setView] = useState<'CALENDAR' | 'UPLOAD' | 'REVIEW' | 'DEFINE_RECIPE'>('CALENDAR');
+  const [view, setView] = useState<'CALENDAR' | 'UPLOAD' | 'REVIEW'>('CALENDAR');
   const [isProcessing, setIsProcessing] = useState(false);
   
   const [pendingPlans, setPendingPlans] = useState<ProductionPlan[]>([]);
@@ -68,7 +69,6 @@ export const ProductionPlanning: React.FC = () => {
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayPlan, setDayPlan] = useState<ProductionPlan | null>(null);
   const [isDayModalOpen, setIsDayModalOpen] = useState(false);
-  const [entryMode, setEntryMode] = useState<'VIEW' | 'EDIT_EXISTING' | 'CREATE_MEAL'>('VIEW');
   
   const [editMeals, setEditMeals] = useState<Meal[]>([]);
   const [editHeadcounts, setEditHeadcounts] = useState<ConsumptionRecord>({
@@ -80,11 +80,9 @@ export const ProductionPlanning: React.FC = () => {
     const unsubPlans = onSnapshot(q, (snap) => {
       setApprovedPlans(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionPlan)));
     });
-
     const unsubRecipes = onSnapshot(collection(db, "recipes"), (snap) => {
       setRecipes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recipe)));
     });
-
     return () => { unsubPlans(); unsubRecipes(); };
   }, []);
 
@@ -112,7 +110,6 @@ export const ProductionPlanning: React.FC = () => {
   const handleDayClick = (date: Date, plan: ProductionPlan | null) => {
     setSelectedDate(date);
     setDayPlan(plan);
-    setEntryMode('VIEW');
     if (plan) {
       setEditMeals(plan.meals.map(m => ({
         ...m,
@@ -132,42 +129,44 @@ export const ProductionPlanning: React.FC = () => {
     setIsDayModalOpen(true);
   };
 
-  const handleSaveEdit = async () => {
+  const handleSaveDay = async () => {
     if (!selectedDate) return;
     setIsProcessing(true);
     const planId = dayPlan?.id || generateId();
     const dateStr = getLocalDateString(selectedDate);
     
-    const mealsWithDishes = editMeals.map(m => ({
-      ...m,
-      dishes: m.dishDetails?.map(d => d.name) || m.dishes || []
-    }));
-
     const newPlan: ProductionPlan = {
       id: planId,
       date: dateStr,
-      type: 'production',
-      meals: mealsWithDishes.filter(m => (m.dishes.length > 0) || (m.dishDetails && m.dishDetails.length > 0)),
+      meals: editMeals.filter(m => (m.dishes && m.dishes.length > 0) || (m.dishDetails && m.dishDetails.length > 0)),
       headcounts: editHeadcounts,
       isApproved: true,
       createdAt: dayPlan?.createdAt || Date.now(),
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
+      isConsumed: dayPlan?.isConsumed || false
     };
 
     try {
       await setDoc(doc(db, "productionPlans", planId), newPlan);
       setIsDayModalOpen(false);
     } catch (e) {
-      alert("Failed to sync plan to Cloud.");
+      alert("System Sync Error: Failed to push operational data to Cloud.");
     } finally { setIsProcessing(false); }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      alert("Deployment Configuration Error: Gemini API key is missing from environment.");
+      return;
+    }
+
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = new GoogleGenAI({ apiKey });
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
         reader.readAsDataURL(file);
@@ -180,33 +179,27 @@ export const ProductionPlanning: React.FC = () => {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { 
-              text: `Extract the daily menu and headcount data from this document. 
+              text: `Extract the meal schedule and population counts for each day.
               
-              Required Headcount Categories (Numbers Only):
-              1. 'teachers' (includes staff/drivers/helpers)
-              2. 'primary' (students in primary section)
-              3. 'prePrimary' (preschool students)
-              4. 'additional' (guests/visitors)
-              5. 'others' (any other groups)
+              Headcount/Population Mapping:
+              1. 'teachers' = Staff, Faculty, Drivers, Helpers, Adults.
+              2. 'primary' = Grade 1-12 students, Primary wing.
+              3. 'prePrimary' = Preschool, Kindergarten, Nurseries.
+              4. 'additional' = Guests, Visitors, Extra portions.
+              5. 'others' = Any other specified groups.
               
-              Return a STRICT JSON array of objects. 
-              Each object must have:
-              - 'date' (YYYY-MM-DD)
-              - 'meals' (array of { mealType, dishes: string[] })
-              - 'headcounts' (object with numeric values for: teachers, primary, prePrimary, additional, others). 
-              
-              If data is missing for a group, use 0. Do not add markdown labels like "json" in the text.` 
+              Respond with a STRICT JSON array of objects. Use numeric values only for headcounts.` 
             }
           ]
         },
-        config: {
+        config: { 
           responseMimeType: "application/json",
           responseSchema: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
-                date: { type: Type.STRING },
+                date: { type: Type.STRING, description: "YYYY-MM-DD" },
                 meals: {
                   type: Type.ARRAY,
                   items: {
@@ -214,8 +207,7 @@ export const ProductionPlanning: React.FC = () => {
                     properties: {
                       mealType: { type: Type.STRING },
                       dishes: { type: Type.ARRAY, items: { type: Type.STRING } }
-                    },
-                    required: ["mealType", "dishes"]
+                    }
                   }
                 },
                 headcounts: {
@@ -229,21 +221,19 @@ export const ProductionPlanning: React.FC = () => {
                   }
                 }
               },
-              required: ["date", "meals"]
+              required: ["date", "meals", "headcounts"]
             }
           }
         }
       });
 
       const extracted = safeParseAIResponse(response.text || "[]");
-      
       const plans: ProductionPlan[] = extracted.map((d: any) => ({
         id: generateId(),
         date: d.date,
-        type: 'production',
         meals: d.meals.map((m: any) => ({
           ...m,
-          dishDetails: m.dishes.map((dn: string) => ({ name: dn.trim(), amountCooked: 0 }))
+          dishDetails: (m.dishes || []).map((dn: string) => ({ name: dn.trim(), amountCooked: 0 }))
         })),
         headcounts: {
           teachers: d.headcounts?.teachers || 0,
@@ -259,28 +249,27 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans(plans);
       setView('REVIEW');
     } catch (err: any) {
-      console.error("AI Extraction Error:", err);
-      alert("AI Extraction Failed: The document structure was unclear or the data was formatted unexpectedly. Please ensure the image is clear and try again.");
+      console.error("AI Sync Error:", err);
+      alert("AI Extraction Failed: The AI could not parse this document in the deployment environment. Please ensure the image is clear and under 4MB.");
     } finally { setIsProcessing(false); }
   };
 
   const handleApproveAll = async () => {
     if (missingRecipesCount > 0) {
-      alert("Safety Lock: All dishes must have a master recipe linked before approval.");
+      alert("Material Lock: All dishes must be linked to a Master Specification before approval.");
       return;
     }
     setIsProcessing(true);
     try {
       const batch = writeBatch(db);
       pendingPlans.forEach(p => {
-        const ref = doc(db, "productionPlans", p.id);
-        batch.set(ref, { ...p, isApproved: true });
+        batch.set(doc(db, "productionPlans", p.id), { ...p, isApproved: true });
       });
       await batch.commit();
       setPendingPlans([]);
       setView('CALENDAR');
     } catch (e) {
-      alert("Sync Error: Could not push data to Cloud.");
+      alert("Cloud Sync Failure.");
     } finally { setIsProcessing(false); }
   };
 
@@ -291,83 +280,35 @@ export const ProductionPlanning: React.FC = () => {
       const invSnapshot = await getDocs(collection(db, "inventory"));
       const inventory = invSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
       const batch = writeBatch(db);
-      
-      let itemsToDeduct: Record<string, number> = {};
+      let deductions: Record<string, number> = {};
 
-      plan.meals.forEach((meal) => {
-        (meal.dishDetails || []).forEach((dish) => {
+      plan.meals.forEach(meal => {
+        (meal.dishDetails || []).forEach(dish => {
           const recipe = recipes.find(r => r.name.toLowerCase().trim() === dish.name.toLowerCase().trim());
-          if (recipe && dish.amountCooked && dish.amountCooked > 0) {
+          if (recipe && dish.amountCooked) {
             recipe.ingredients.forEach(ing => {
-              const invItem = inventory.find(i => 
-                (ing.inventoryItemId && i.id === ing.inventoryItemId) || 
-                (i.name.toLowerCase().trim() === ing.name.toLowerCase().trim())
-              );
-
+              const invItem = inventory.find(i => i.id === ing.inventoryItemId || i.name.toLowerCase() === ing.name.toLowerCase());
               if (invItem) {
-                const deduction = ing.amount * (dish.amountCooked || 0) * (ing.conversionFactor || 1.0);
-                itemsToDeduct[invItem.id] = (itemsToDeduct[invItem.id] || 0) + deduction;
+                const amount = ing.amount * dish.amountCooked * (ing.conversionFactor || 1);
+                deductions[invItem.id] = (deductions[invItem.id] || 0) + amount;
               }
             });
           }
         });
       });
 
-      Object.entries(itemsToDeduct).forEach(([id, amt]) => {
+      Object.entries(deductions).forEach(([id, amt]) => {
         const item = inventory.find(i => i.id === id);
-        if (item) {
-          const newQty = Math.max(0, (item.quantity || 0) - amt);
-          batch.update(doc(db, "inventory", id), { quantity: newQty });
-        }
+        if (item) batch.update(doc(db, "inventory", id), { quantity: Math.max(0, item.quantity - amt) });
       });
 
-      batch.update(doc(db, "productionPlans", plan.id), { 
-        isConsumed: true, 
-        headcounts: editHeadcounts, 
-        meals: editMeals 
-      });
-
+      batch.update(doc(db, "productionPlans", plan.id), { isConsumed: true, headcounts: editHeadcounts, meals: editMeals });
       await batch.commit();
       setIsDayModalOpen(false);
-      alert("Production Logged. Inventory stocks updated.");
-    } catch (err) {
-      alert("Sync Error: Failed to process stock deductions.");
+      alert("Operational Cycle Closed: Inventory stocks updated.");
+    } catch (e) {
+      alert("Ledger Update Failed.");
     } finally { setIsProcessing(false); }
-  };
-
-  const renderCalendarGrid = () => {
-    const days = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-    const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
-    const grid = [];
-    
-    for (let i = 0; i < start; i++) {
-      grid.push(<div key={`e-${i}`} className="bg-slate-50/20 border-r border-b border-slate-100 h-32 md:h-40"></div>);
-    }
-    
-    for (let d = 1; d <= days; d++) {
-      const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d);
-      const dateStr = getLocalDateString(date);
-      const plan = approvedPlans.find(p => p.date === dateStr);
-      const isToday = new Date().toDateString() === date.toDateString();
-      
-      grid.push(
-        <div key={d} onClick={() => handleDayClick(date, plan || null)} className={`border-r border-b border-slate-100 h-32 md:h-40 p-3 hover:bg-slate-50 cursor-pointer transition-all ${isToday ? 'bg-emerald-50/30' : 'bg-white'}`}>
-           <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>{d}</span>
-           {plan && (
-             <div className="space-y-1">
-               {plan.meals.slice(0, 3).map((m, mi) => (
-                 <div key={mi} className="bg-white border border-slate-200 rounded-lg p-1.5 flex items-center gap-1.5 overflow-hidden shadow-sm">
-                   <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${plan.isConsumed ? 'bg-slate-300' : 'bg-emerald-500'}`}></div>
-                   <span className="text-[9px] font-black text-slate-700 truncate">{m.mealType}: {m.dishes[0] || 'Menu'}</span>
-                 </div>
-               ))}
-               {plan.isConsumed && <div className="text-[7px] font-black text-emerald-600 uppercase tracking-widest mt-1 text-center">✓ Logged</div>}
-             </div>
-           )}
-        </div>
-      );
-    }
-    return grid;
   };
 
   return (
@@ -377,7 +318,7 @@ export const ProductionPlanning: React.FC = () => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
              <CalendarCheck className="text-emerald-500" size={32} /> Production Hub
           </h2>
-          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Cloud Synchronization Active</p>
+          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Operational Menu & Headcount Synchronization</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => setView('UPLOAD')} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-emerald-600 transition-all">
@@ -396,7 +337,7 @@ export const ProductionPlanning: React.FC = () => {
           <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl max-w-sm w-full">
             <Loader2 className="animate-spin mx-auto text-emerald-500 mb-6" size={64} />
             <h3 className="text-2xl font-black text-slate-900">AI Operational Mapping...</h3>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-4">Extracting menus & headcounts.</p>
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-4">Extracting Menu & Populations</p>
           </div>
         </div>
       )}
@@ -405,8 +346,8 @@ export const ProductionPlanning: React.FC = () => {
         <div className="max-w-4xl mx-auto space-y-12 py-10 animate-in slide-in-from-bottom-10 duration-500">
            <div className="text-center space-y-4">
               <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto shadow-sm"><FileUp size={48} /></div>
-              <h3 className="text-4xl font-black text-slate-900 tracking-tighter">AI Processing Protocol</h3>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Upload weekly documents to auto-link dishes and population counts for production cycles.</p>
+              <h3 className="text-4xl font-black text-slate-900 tracking-tighter">AI Menu Sync</h3>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Upload weekly documents to auto-link dishes and population counts for accurate production cycles.</p>
            </div>
            <div className="relative group">
               <input type="file" id="schedule-upload" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
@@ -415,33 +356,25 @@ export const ProductionPlanning: React.FC = () => {
                 <p className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 group-hover:text-emerald-600">Drop Document or Click</p>
               </label>
            </div>
-           <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 flex items-start gap-4 max-w-2xl mx-auto">
-             <Info className="text-slate-400 shrink-0 mt-1" size={20} />
-             <p className="text-xs font-medium text-slate-500 leading-relaxed">
-               The AI will extract both the menu items and the headcount for categories like Staff, Primary, and Pre-Primary. Ensure the text is legible for best results.
-             </p>
-           </div>
         </div>
       )}
 
       {view === 'REVIEW' && (
         <div className="space-y-10 animate-in fade-in duration-500">
            <div className="flex justify-between items-center">
-              <h3 className="text-2xl font-black text-slate-900 uppercase">Review Pending Imports</h3>
+              <h3 className="text-2xl font-black text-slate-900 uppercase">Review AI Extractions</h3>
               <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 ${missingRecipesCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
-                 {missingRecipesCount > 0 ? `${missingRecipesCount} Unlinked Specs` : 'Ready to Sync'}
+                 {missingRecipesCount > 0 ? `${missingRecipesCount} Unmapped Dishes` : 'System Verified'}
               </div>
            </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {pendingPlans.map((plan, pi) => {
-                const totalPeople = Object.values(plan.headcounts || {}).reduce((a, b) => a + (b || 0), 0);
+                const total = Object.values(plan.headcounts || {}).reduce((a, b) => a + b, 0);
                 return (
                   <div key={pi} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 shadow-sm relative overflow-hidden group flex flex-col h-full hover:border-emerald-500 transition-colors">
                      <div className="flex justify-between items-start mb-6">
                         <h4 className="font-black text-xl text-slate-900">{new Date(plan.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</h4>
-                        <div className="bg-slate-100 text-slate-500 px-3 py-1 rounded-xl text-[9px] font-black flex items-center gap-2">
-                           <Users size={12} /> {totalPeople} Total
-                        </div>
+                        <div className="bg-slate-100 px-3 py-1 rounded-xl text-[9px] font-black text-slate-500 flex items-center gap-2"><Users size={12}/> {total} Total</div>
                      </div>
                      <div className="space-y-4 flex-1">
                        {plan.meals.map((m, mi) => (
@@ -461,18 +394,16 @@ export const ProductionPlanning: React.FC = () => {
                          </div>
                        ))}
                      </div>
-                     
                      <div className="mt-6 pt-6 border-t border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Extracted Headcounts</p>
-                        <div className="grid grid-cols-5 gap-1 bg-slate-50 p-3 rounded-2xl">
-                           <div className="text-center"><p className="text-[7px] font-black text-slate-400 uppercase">Staff</p><p className="text-xs font-black">{plan.headcounts?.teachers || 0}</p></div>
-                           <div className="text-center"><p className="text-[7px] font-black text-slate-400 uppercase">Prim.</p><p className="text-xs font-black">{plan.headcounts?.primary || 0}</p></div>
-                           <div className="text-center"><p className="text-[7px] font-black text-slate-400 uppercase">Pre-P.</p><p className="text-xs font-black">{plan.headcounts?.prePrimary || 0}</p></div>
-                           <div className="text-center"><p className="text-[7px] font-black text-slate-400 uppercase">Addl.</p><p className="text-xs font-black">{plan.headcounts?.additional || 0}</p></div>
-                           <div className="text-center"><p className="text-[7px] font-black text-slate-400 uppercase">Misc</p><p className="text-xs font-black">{plan.headcounts?.others || 0}</p></div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Population Audit</p>
+                        <div className="grid grid-cols-5 gap-1 text-center bg-slate-50 p-3 rounded-2xl">
+                           <div><p className="text-[7px] font-black text-slate-400 uppercase">Staff</p><p className="text-xs font-black">{plan.headcounts?.teachers}</p></div>
+                           <div><p className="text-[7px] font-black text-slate-400 uppercase">Prim.</p><p className="text-xs font-black">{plan.headcounts?.primary}</p></div>
+                           <div><p className="text-[7px] font-black text-slate-400 uppercase">Pre-P.</p><p className="text-xs font-black">{plan.headcounts?.prePrimary}</p></div>
+                           <div><p className="text-[7px] font-black text-slate-400 uppercase">Addl.</p><p className="text-xs font-black">{plan.headcounts?.additional}</p></div>
+                           <div><p className="text-[7px] font-black text-slate-400 uppercase">Misc</p><p className="text-xs font-black">{plan.headcounts?.others}</p></div>
                         </div>
                      </div>
-
                      <button onClick={() => setPendingPlans(pendingPlans.filter((_, i) => i !== pi))} className="absolute top-6 right-6 p-2 text-slate-200 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><X size={16} /></button>
                   </div>
                 );
@@ -499,7 +430,37 @@ export const ProductionPlanning: React.FC = () => {
            <div className="grid grid-cols-7 border-b bg-white text-center py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d}>{d}</div>)}
            </div>
-           <div className="grid grid-cols-7 bg-slate-50/30">{renderCalendarGrid()}</div>
+           <div className="grid grid-cols-7 bg-slate-50/30">
+              {(() => {
+                const days = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
+                const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+                const grid = [];
+                for (let i = 0; i < start; i++) grid.push(<div key={`e-${i}`} className="bg-slate-50/20 border-r border-b border-slate-100 h-32 md:h-40"></div>);
+                for (let d = 1; d <= days; d++) {
+                  const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d);
+                  const dateStr = getLocalDateString(date);
+                  const plan = approvedPlans.find(p => p.date === dateStr);
+                  const isToday = new Date().toDateString() === date.toDateString();
+                  grid.push(
+                    <div key={d} onClick={() => handleDayClick(date, plan || null)} className={`border-r border-b border-slate-100 h-32 md:h-40 p-3 hover:bg-slate-50 cursor-pointer transition-all ${isToday ? 'bg-emerald-50/30' : 'bg-white'}`}>
+                       <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-slate-900 text-white shadow-md' : 'text-slate-400'}`}>{d}</span>
+                       {plan && (
+                         <div className="space-y-1">
+                           {plan.meals.slice(0, 2).map((m, mi) => (
+                             <div key={mi} className="bg-white border border-slate-200 rounded-lg p-1 flex items-center gap-1 shadow-sm overflow-hidden">
+                               <div className={`w-1 h-4 rounded-full ${plan.isConsumed ? 'bg-slate-200' : 'bg-emerald-500'}`}></div>
+                               <span className="text-[8px] font-black text-slate-700 truncate">{m.mealType}: {m.dishes[0] || 'Menu'}</span>
+                             </div>
+                           ))}
+                           {plan.isConsumed && <div className="text-[7px] font-black text-emerald-600 text-center mt-1 uppercase tracking-widest">✓ Finalized</div>}
+                         </div>
+                       )}
+                    </div>
+                  );
+                }
+                return grid;
+              })()}
+           </div>
         </div>
       )}
 
@@ -514,9 +475,7 @@ export const ProductionPlanning: React.FC = () => {
               <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
                  {dayPlan ? (
                     <div className="space-y-8">
-                       <div className="flex justify-between items-center">
-                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Daily Operational Meals</h5>
-                       </div>
+                       <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Operational Meals</h5>
                        {editMeals.map((m, mi) => (
                           <div key={mi} className="space-y-4">
                              <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-4"><div className="w-8 h-px bg-slate-200"></div> {m.mealType}</h5>
@@ -527,17 +486,15 @@ export const ProductionPlanning: React.FC = () => {
                                       <div key={di} className="bg-slate-50 p-6 rounded-[2.5rem] border border-slate-100 flex items-center justify-between">
                                          <div className="flex flex-col">
                                             <span className="font-black text-slate-900 text-lg">{dish.name}</span>
-                                            <span className={`text-[8px] font-black uppercase mt-1 ${recipe ? 'text-emerald-500' : 'text-rose-500'}`}>{recipe ? '✓ Spec Linked' : '! No Spec Found'}</span>
+                                            <span className={`text-[8px] font-black uppercase mt-1 ${recipe ? 'text-emerald-500' : 'text-rose-500'}`}>{recipe ? '✓ Spec Linked' : '! Missing Spec'}</span>
                                          </div>
                                          {!dayPlan.isConsumed ? (
                                             <div className="flex items-center gap-3">
-                                               <input type="number" step="0.1" value={dish.amountCooked || ''} onChange={e => { const up = [...editMeals]; up[mi].dishDetails![di].amountCooked = parseFloat(e.target.value) || 0; setEditMeals(up); }} className="w-24 px-4 py-2 rounded-xl border-2 font-black text-center" placeholder="KG/L" />
-                                               <span className="text-[9px] font-black text-slate-400 uppercase">Cooked</span>
+                                               <input type="number" step="0.1" value={dish.amountCooked || ''} onChange={e => { const up = [...editMeals]; up[mi].dishDetails![di].amountCooked = parseFloat(e.target.value) || 0; setEditMeals(up); }} className="w-24 px-4 py-2 rounded-xl border-2 font-black text-center" placeholder="Qty" />
+                                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{recipe?.outputUnit || 'kg'}</span>
                                             </div>
                                          ) : (
-                                            <div className="bg-slate-900 text-white px-5 py-2 rounded-2xl text-sm font-black shadow-lg">
-                                               {dish.amountCooked} {recipe?.outputUnit || 'KG'}
-                                            </div>
+                                            <div className="bg-slate-900 text-white px-5 py-2 rounded-2xl text-sm font-black">{dish.amountCooked} {recipe?.outputUnit || 'KG'}</div>
                                          )}
                                       </div>
                                    );
@@ -547,14 +504,14 @@ export const ProductionPlanning: React.FC = () => {
                        ))}
                        
                        <div className="space-y-6 pt-6 border-t border-slate-100">
-                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-3"><Users size={16}/> Attendance Breakdown</h5>
+                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-3"><Users size={16}/> Attendance Registry (Types of People)</h5>
                           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                              {[
-                               { label: 'Staff', key: 'teachers' as const },
+                               { label: 'Staff/Teachers', key: 'teachers' as const },
                                { label: 'Primary', key: 'primary' as const },
                                { label: 'Pre-Prim.', key: 'prePrimary' as const },
                                { label: 'Addl.', key: 'additional' as const },
-                               { label: 'Misc', key: 'others' as const }
+                               { label: 'Others', key: 'others' as const }
                              ].map(cat => (
                                 <div key={cat.key} className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
                                    <p className="text-[7px] font-black text-slate-400 uppercase mb-2">{cat.label}</p>
@@ -563,7 +520,7 @@ export const ProductionPlanning: React.FC = () => {
                                        type="number" 
                                        value={editHeadcounts[cat.key] || 0}
                                        onChange={(e) => setEditHeadcounts({...editHeadcounts, [cat.key]: parseInt(e.target.value) || 0})}
-                                       className="w-full bg-white border border-slate-200 rounded-xl text-center font-black py-2 text-sm shadow-inner outline-none focus:border-emerald-500" 
+                                       className="w-full bg-white border border-slate-200 rounded-xl text-center font-black py-2 text-sm outline-none focus:border-emerald-500 transition-all" 
                                      />
                                    ) : (
                                      <span className="text-xl font-black text-slate-900">{dayPlan.headcounts?.[cat.key] || 0}</span>
@@ -574,18 +531,19 @@ export const ProductionPlanning: React.FC = () => {
                        </div>
 
                        {!dayPlan.isConsumed && (
-                          <button onClick={() => toggleConsumption(dayPlan)} className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-2xl flex items-center justify-center gap-3 active:scale-95">
-                             <UserCheck size={20} /> Finalize Production & Deduct Stocks
-                          </button>
+                          <div className="space-y-4">
+                             <button onClick={handleSaveDay} className="w-full bg-white border-2 border-slate-900 py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all">Save Changes</button>
+                             <button onClick={() => toggleConsumption(dayPlan)} className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-2xl flex items-center justify-center gap-3">
+                                <UserCheck size={20} /> Finalize Production & Deduct Stocks
+                             </button>
+                          </div>
                        )}
-                       <button onClick={async () => { if(confirm("Permanently delete this entry?")) { await deleteDoc(doc(db, "productionPlans", dayPlan.id)); setIsDayModalOpen(false); }}} className="w-full py-4 text-rose-400 font-black text-[10px] uppercase tracking-widest hover:text-rose-600 transition-colors">
-                          <Trash2 size={16} className="inline mr-2" /> Delete Record
-                       </button>
+                       <button onClick={async () => { if(confirm("Permanently delete this operational record?")) { await deleteDoc(doc(db, "productionPlans", dayPlan.id)); setIsDayModalOpen(false); }}} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest">Delete Entry</button>
                     </div>
                  ) : (
                     <div className="py-20 text-center space-y-6">
                        <ChefHat size={64} className="mx-auto text-slate-100" />
-                       <button onClick={handleSaveEdit} className="bg-slate-900 text-white px-12 py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl hover:bg-emerald-600 transition-all active:scale-95">Initialize Operational Cycle</button>
+                       <button onClick={handleSaveDay} className="bg-slate-900 text-white px-12 py-6 rounded-[2.5rem] font-black uppercase text-xs tracking-widest shadow-2xl hover:bg-emerald-600 transition-all">Initialize Operational Cycle</button>
                     </div>
                  )}
               </div>
