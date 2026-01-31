@@ -39,11 +39,14 @@ export const ProcurementManagement: React.FC = () => {
     const unsubInv = onSnapshot(collection(db, "inventory"), (snap) => {
       const invData = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryItem));
       setInventory(invData);
-      const autoShortages = invData.filter(i => (i.quantity || 0) <= (i.reorderLevel || 0)).map(i => ({
+      // Correcting autoShortages to match PendingProcurement interface requirements by adding currentStock and shortageQty
+      const autoShortages: PendingProcurement[] = invData.filter(i => (i.quantity || 0) <= (i.reorderLevel || 0)).map(i => ({
         id: `SHORT-${i.id}`,
         ingredientName: i.name,
         brand: i.brand,
         requiredQty: i.reorderLevel * 2,
+        currentStock: i.quantity || 0,
+        shortageQty: Math.max(0, (i.reorderLevel * 2) - (i.quantity || 0)),
         unit: i.unit,
         requiredByDate: new Date().toISOString().split('T')[0],
         status: 'pending' as const,
