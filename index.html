@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KMS Kitchen Management System</title>
 
-  <!-- Tailwind CDN -->
+  <!-- Tailwind CDN (OK for now, we can optimize later) -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Font -->
@@ -26,7 +26,6 @@
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
     ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-    /* Print Styles */
     @media print {
       @page { margin: 1.5cm; size: A4; }
       .no-print { display: none !important; }
@@ -37,20 +36,29 @@
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 
+  <!-- 🌐 GLOBAL APP CONFIG (Gemini API Key for AI features) -->
+  <script>
+    window.APP_CONFIG = {
+      GEMINI_API_KEY: "AIzaSyBIiFjiWB8I5k7omkMOGJbfHCi3xpXJws4"
+    };
+  </script>
+
   <!-- ✅ ONLY ONE IMPORT MAP -->
   <script type="importmap">
-{
-  "imports": {
-    "react": "https://esm.sh/react@19",
-    "react-dom/": "https://esm.sh/react-dom@19/",
-    "react-router-dom": "https://esm.sh/react-router-dom@7",
-    "lucide-react": "https://esm.sh/lucide-react@0.563.0",
-    "firebase/": "https://esm.sh/firebase@12.8.0/",
-    "@google/genai": "https://esm.sh/@google/genai@1.38.0",
-    "react/": "https://esm.sh/react@^19.2.4/"
+  {
+    "imports": {
+      "react": "https://esm.sh/react@19",
+      "react-dom/client": "https://esm.sh/react-dom@19/client",
+      "react-router-dom": "https://esm.sh/react-router-dom@7",
+      "lucide-react": "https://esm.sh/lucide-react@0.563.0",
+      "firebase/app": "https://esm.sh/firebase@12.8.0/app",
+      "firebase/auth": "https://esm.sh/firebase@12.8.0/auth",
+      "firebase/firestore": "https://esm.sh/firebase@12.8.0/firestore",
+      "firebase/storage": "https://esm.sh/firebase@12.8.0/storage",
+      "@google/genai": "https://esm.sh/@google/genai@1.38.0"
+    }
   }
-}
-</script>
+  </script>
 
 </head>
 
@@ -65,7 +73,7 @@
     </div>
   </div>
 
-  <!-- Your React App -->
+  <!-- React Entry -->
   <script type="module" src="./index.tsx"></script>
 
 </body>
