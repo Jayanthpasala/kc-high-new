@@ -167,7 +167,7 @@ export const ProductionPlanning: React.FC = () => {
     
     setIsProcessing(true);
     try {
-      // Strictly using process.env.API_KEY as requested
+      // Strictly utilizing process.env.API_KEY as per core system architecture
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
@@ -175,22 +175,23 @@ export const ProductionPlanning: React.FC = () => {
         reader.onload = () => resolve((reader.result as string).split(',')[1]);
       });
 
+      // Upgraded to Gemini 3 Pro for superior visual extraction and reasoning
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         contents: {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { 
-              text: `Extract the meal schedule and population counts for each day from this document.
+              text: `Extract the weekly meal schedule and daily population headcounts from this kitchen operation document.
               
-              Headcount Mapping:
-              - 'teachers': Staff, Faculty, Adults.
-              - 'primary': Older students (Grade 1+).
-              - 'prePrimary': Preschoolers, Nursery.
-              - 'additional': Guests, Extra portions.
-              - 'others': Uncategorized groups.
+              Headcount/Population Mapping Rules:
+              - 'teachers': Includes all Staff, Faculty, Teachers, Drivers, and Admin adults.
+              - 'primary': Includes Grade 1 to Grade 12 students or general 'Primary' wing pupils.
+              - 'prePrimary': Includes Preschool, Kindergarten, Montessori, or Nursery pupils.
+              - 'additional': Includes Guests, Visitors, or Extra meal portions requested.
+              - 'others': Any other specified groups not fitting above.
               
-              Required format: JSON array of objects with strict numeric headcounts.` 
+              You MUST return a STRICT JSON array of objects. Use numeric values only for headcounts. If a date is not clear, estimate YYYY-MM-DD based on context.` 
             }
           ]
         },
@@ -251,8 +252,8 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans(plans);
       setView('REVIEW');
     } catch (err: any) {
-      console.error("AI Extraction Error:", err);
-      alert("AI Sync Failed: The system could not extract data from this file. Ensure the document is clear and the API key is correctly configured in your deployment settings.");
+      console.error("AI Sync Engine Failure:", err);
+      alert("AI Sync Failed: The system encountered an error during deployment extraction. Please ensure the document image is well-lit and that the environment API key is correctly provisioned.");
     } finally { setIsProcessing(false); }
   };
 
