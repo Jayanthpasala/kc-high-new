@@ -19,9 +19,10 @@ import {
   DollarSign,
   BarChart3,
   Award,
-  TrendingUp
+  TrendingUp,
+  Wallet
 } from 'lucide-react';
-import { Vendor, InventoryItem } from '../types';
+import { Vendor, InventoryItem, PurchaseOrder } from '../types';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, setDoc, doc, deleteDoc } from 'firebase/firestore';
 
@@ -36,7 +37,7 @@ export const VendorManagement: React.FC = () => {
   const [editingVendor, setEditingVendor] = useState<Partial<Vendor> | null>(null);
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [invSearch, setInvSearch] = useState('');
-  const [purchaseOrders, setPurchaseOrders] = useState<any[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
 
   useEffect(() => {
     // Sync Vendors from Firestore
@@ -51,7 +52,7 @@ export const VendorManagement: React.FC = () => {
     
     // Sync POs for stats
     const unsubPOs = onSnapshot(collection(db, "purchaseOrders"), (snap) => {
-      setPurchaseOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setPurchaseOrders(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseOrder)));
     });
 
     return () => {
@@ -144,9 +145,17 @@ export const VendorManagement: React.FC = () => {
   };
 
   const getVendorStats = (vendorId: string) => {
-     const orders = purchaseOrders.filter(po => po.vendorId === vendorId);
-     const totalSpend = orders.reduce((acc, po) => acc + (po.totalCost || 0), 0);
-     return { count: orders.length, totalSpend, lastOrder: orders.length > 0 ? new Date(orders[0].createdAt).toLocaleDateString() : 'N/A' };
+     // Filter by vendor and completed status ('received' or 'partially_received')
+     const completedOrders = purchaseOrders.filter(po => 
+        po.vendorId === vendorId && 
+        (po.status === 'received' || po.status === 'partially_received')
+     );
+     const totalValue = completedOrders.reduce((acc, po) => acc + (po.totalCost || 0), 0);
+     return { 
+       count: completedOrders.length, 
+       totalValue, 
+       lastOrder: completedOrders.length > 0 ? new Date(completedOrders[0].createdAt).toLocaleDateString() : 'N/A' 
+     };
   };
 
   const getMarketAnalysis = () => {
@@ -207,63 +216,72 @@ export const VendorManagement: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {filteredVendors.map(vendor => (
-          <div key={vendor.id} className="bg-white rounded-[3rem] border-2 border-slate-100 overflow-hidden shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col">
-            <div className="p-8 flex-1">
-              <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center shadow-lg shrink-0">
-                    <Building2 size={28} />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-slate-900 leading-tight">{vendor.name}</h3>
-                    <div className="flex items-center gap-3 mt-1">
-                      <div className="flex items-center text-amber-500">
-                        <Star size={14} fill="currentColor" />
-                        <span className="ml-1 text-xs font-black">{vendor.rating}</span>
+        {filteredVendors.map(vendor => {
+          const stats = getVendorStats(vendor.id);
+          return (
+            <div key={vendor.id} className="bg-white rounded-[3rem] border-2 border-slate-100 overflow-hidden shadow-sm hover:shadow-2xl hover:border-emerald-200 transition-all group flex flex-col">
+              <div className="p-8 flex-1">
+                <div className="flex flex-col sm:flex-row justify-between items-start mb-6 gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 bg-slate-900 text-white rounded-[1.5rem] flex items-center justify-center shadow-lg shrink-0">
+                      <Building2 size={28} />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-black text-slate-900 leading-tight">{vendor.name}</h3>
+                      <div className="flex items-center gap-3 mt-1">
+                        <div className="flex items-center text-amber-500">
+                          <Star size={14} fill="currentColor" />
+                          <span className="ml-1 text-xs font-black">{vendor.rating}</span>
+                        </div>
+                        <div className="flex items-center gap-2 bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-md border border-emerald-100">
+                           <Wallet size={10} />
+                           <span className="text-[10px] font-black uppercase tracking-widest">
+                             Value: ₹{stats.totalValue.toLocaleString()}
+                           </span>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-black uppercase text-slate-400 tracking-widest bg-slate-100 px-2 py-0.5 rounded-md">
-                         Spent: ₹{(getVendorStats(vendor.id).totalSpend / 1000).toFixed(1)}k
-                      </span>
                     </div>
                   </div>
+                  <div className="flex gap-2 self-end sm:self-start">
+                    <button onClick={() => handleOpenEdit(vendor)} className="p-3 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"><Edit3 size={18} /></button>
+                    <button onClick={() => handleDelete(vendor.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
+                  </div>
                 </div>
-                <div className="flex gap-2 self-end sm:self-start">
-                  <button onClick={() => handleOpenEdit(vendor)} className="p-3 bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all"><Edit3 size={18} /></button>
-                  <button onClick={() => handleDelete(vendor.id)} className="p-3 bg-slate-50 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all"><Trash2 size={18} /></button>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
-                <div className="space-y-4">
-                  <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                    <Phone size={12} /> Contact
-                  </h4>
-                  <div className="space-y-2">
-                    <p className="text-sm font-black text-slate-700">{vendor.contact}</p>
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
-                      <Mail size={12} /> {vendor.email}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-8">
+                  <div className="space-y-4">
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                      <Phone size={12} /> Contact
+                    </h4>
+                    <div className="space-y-2">
+                      <p className="text-sm font-black text-slate-700">{vendor.contact}</p>
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+                        <Mail size={12} /> {vendor.email}
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
-                      <Package size={12} /> Pricing Ledger
-                    </h4>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {vendor.priceLedger?.slice(0, 2).map((p, idx) => (
-                      <span key={idx} className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tight border border-slate-100">
-                        {p.itemName}: ₹{p.price}
-                      </span>
-                    ))}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] flex items-center gap-2">
+                        <Package size={12} /> Pricing Ledger
+                      </h4>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {vendor.priceLedger?.slice(0, 2).map((p, idx) => (
+                        <span key={idx} className="bg-slate-50 text-slate-600 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tight border border-slate-100">
+                          {p.itemName}: ₹{p.price}
+                        </span>
+                      ))}
+                      {(vendor.priceLedger?.length || 0) > 2 && (
+                        <span className="text-[9px] font-black text-slate-400 uppercase p-1.5">+{vendor.priceLedger!.length - 2} more</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {isModalOpen && editingVendor && (
@@ -293,18 +311,87 @@ export const VendorManagement: React.FC = () => {
             <div className="flex-1 flex flex-col bg-white overflow-hidden p-10">
                {activeTab === 'identity' && (
                  <div className="space-y-8 animate-in fade-in">
-                    <input type="text" value={editingVendor.name} onChange={e => setEditingVendor({...editingVendor, name: e.target.value})} placeholder="Vendor Name" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-black text-xl" />
-                    <input type="text" value={editingVendor.contact} onChange={e => setEditingVendor({...editingVendor, contact: e.target.value})} placeholder="Contact Lead" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-bold" />
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Business Name</label>
+                       <input type="text" value={editingVendor.name} onChange={e => setEditingVendor({...editingVendor, name: e.target.value})} placeholder="Vendor Name" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-black text-xl border-2 border-transparent focus:border-emerald-500 outline-none" />
+                    </div>
+                    <div className="space-y-2">
+                       <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Contact Person</label>
+                       <input type="text" value={editingVendor.contact} onChange={e => setEditingVendor({...editingVendor, contact: e.target.value})} placeholder="Contact Lead" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-bold border-2 border-transparent focus:border-emerald-500 outline-none" />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Email</label>
+                          <input type="email" value={editingVendor.email} onChange={e => setEditingVendor({...editingVendor, email: e.target.value})} placeholder="email@vendor.com" className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-bold border-2 border-transparent focus:border-emerald-500 outline-none" />
+                       </div>
+                       <div className="space-y-2">
+                          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Phone</label>
+                          <input type="text" value={editingVendor.phone} onChange={e => setEditingVendor({...editingVendor, phone: e.target.value})} placeholder="+91..." className="w-full px-8 py-6 rounded-3xl bg-slate-50 font-bold border-2 border-transparent focus:border-emerald-500 outline-none" />
+                       </div>
+                    </div>
                  </div>
                )}
                {activeTab === 'pricing' && (
-                  <div className="space-y-4 overflow-y-auto custom-scrollbar">
-                    {editingVendor.suppliedItems?.map(item => (
-                       <div key={item} className="p-6 bg-slate-50 rounded-2xl flex justify-between items-center">
-                          <span className="font-black">{item}</span>
-                          <input type="number" value={editingVendor.priceLedger?.find(p => p.itemName === item)?.price || 0} onChange={(e) => updatePricePoint(item, parseFloat(e.target.value) || 0)} className="w-24 px-4 py-2 rounded-xl text-center font-black" />
+                  <div className="space-y-4 overflow-y-auto custom-scrollbar pr-2">
+                    <h4 className="text-xl font-black text-slate-900 uppercase tracking-tight mb-6">Price Ledger Management</h4>
+                    {editingVendor.suppliedItems?.length === 0 ? (
+                       <div className="p-10 text-center border-2 border-dashed border-slate-100 rounded-3xl text-slate-400">
+                          No items linked to this vendor. Go to "Inventory Link" to add materials.
                        </div>
-                    ))}
+                    ) : (
+                       editingVendor.suppliedItems?.map(item => (
+                          <div key={item} className="p-6 bg-slate-50 rounded-2xl flex justify-between items-center group hover:bg-white hover:shadow-lg transition-all border border-transparent hover:border-emerald-100">
+                             <div>
+                                <span className="font-black text-slate-900 block">{item}</span>
+                                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Base Rate Management</span>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                <span className="text-xs font-black text-slate-400">₹</span>
+                                <input 
+                                  type="number" 
+                                  value={editingVendor.priceLedger?.find(p => p.itemName === item)?.price || 0} 
+                                  onChange={(e) => updatePricePoint(item, parseFloat(e.target.value) || 0)} 
+                                  className="w-32 px-4 py-3 rounded-xl text-center font-black bg-white border-2 border-slate-100 focus:border-emerald-500 outline-none transition-all" 
+                                />
+                                <span className="text-xs font-black text-slate-400">{inventory.find(i => i.name === item)?.unit || 'kg'}</span>
+                             </div>
+                          </div>
+                       ))
+                    )}
+                  </div>
+               )}
+               {activeTab === 'supply' && (
+                  <div className="space-y-6 flex flex-col h-full">
+                     <div className="relative shrink-0">
+                        <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <input 
+                           type="text" 
+                           placeholder="Search inventory materials to link..." 
+                           value={invSearch} 
+                           onChange={e => setInvSearch(e.target.value)} 
+                           className="w-full pl-14 pr-6 py-5 rounded-2xl bg-slate-50 font-bold outline-none border-2 border-transparent focus:border-emerald-500 transition-all" 
+                        />
+                     </div>
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 overflow-y-auto custom-scrollbar pr-2 flex-1">
+                        {filteredInventory.map(item => {
+                           const isLinked = editingVendor.suppliedItems?.includes(item.name);
+                           return (
+                              <button 
+                                 key={item.id} 
+                                 onClick={() => toggleSuppliedItem(item.name)}
+                                 className={`p-5 rounded-2xl border-2 flex items-center justify-between transition-all group ${
+                                    isLinked ? 'bg-emerald-50 border-emerald-500 text-emerald-900' : 'bg-white border-slate-100 hover:border-slate-300'
+                                 }`}
+                              >
+                                 <div>
+                                    <p className="font-black text-sm text-left">{item.name}</p>
+                                    <p className="text-[10px] font-black uppercase opacity-50 tracking-widest text-left">{item.category}</p>
+                                 </div>
+                                 <CheckCircle2 size={20} className={isLinked ? 'text-emerald-500' : 'text-slate-100 group-hover:text-slate-200'} />
+                              </button>
+                           );
+                        })}
+                     </div>
                   </div>
                )}
             </div>

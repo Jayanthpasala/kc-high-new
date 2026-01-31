@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Upload, 
@@ -159,6 +160,7 @@ export const ProductionPlanning: React.FC = () => {
     if (!file) return;
     
     setIsProcessing(true);
+    const presentYear = new Date().getFullYear();
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const reader = new FileReader();
@@ -173,7 +175,10 @@ export const ProductionPlanning: React.FC = () => {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { 
-              text: `Analyze this menu and population document. Extract date, meal types, dishes and headcount numbers. Return as valid JSON array.` 
+              text: `Analyze this menu and population document for the year ${presentYear}.
+              Extract the dates, meal types, dishes, and headcount numbers.
+              Ensure that any extracted dates belong to the year ${presentYear} unless otherwise specified.
+              Return a valid JSON array of production plans.` 
             }
           ]
         },
@@ -184,7 +189,7 @@ export const ProductionPlanning: React.FC = () => {
             items: {
               type: Type.OBJECT,
               properties: {
-                date: { type: Type.STRING },
+                date: { type: Type.STRING, description: "YYYY-MM-DD format" },
                 meals: {
                   type: Type.ARRAY,
                   items: {
@@ -205,7 +210,8 @@ export const ProductionPlanning: React.FC = () => {
                     others: { type: Type.NUMBER }
                   }
                 }
-              }
+              },
+              required: ["date", "meals", "headcounts"]
             }
           }
         }
@@ -302,7 +308,7 @@ export const ProductionPlanning: React.FC = () => {
           <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl max-w-sm w-full">
             <Loader2 className="animate-spin mx-auto text-emerald-500 mb-6" size={64} />
             <h3 className="text-2xl font-black text-slate-900">Syncing...</h3>
-            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-4">Processing Cloud Operations</p>
+            <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-4">Processing Operations</p>
           </div>
         </div>
       )}
@@ -312,7 +318,7 @@ export const ProductionPlanning: React.FC = () => {
            <div className="text-center space-y-4">
               <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto shadow-sm"><FileUp size={48} /></div>
               <h3 className="text-4xl font-black text-slate-900 tracking-tighter">AI Menu Integration</h3>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Upload a meal schedule document to auto-populate production plans.</p>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Upload documents to auto-populate production for the current year.</p>
            </div>
            <div className="relative group">
               <input type="file" id="schedule-upload" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
@@ -330,7 +336,7 @@ export const ProductionPlanning: React.FC = () => {
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
               {pendingPlans.map((plan, pi) => (
                 <div key={pi} className="bg-white p-8 rounded-[3rem] border-2 border-slate-100 shadow-sm relative group hover:border-emerald-500 transition-colors">
-                   <h4 className="font-black text-xl text-slate-900 mb-6">{new Date(plan.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}</h4>
+                   <h4 className="font-black text-xl text-slate-900 mb-6">{new Date(plan.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}</h4>
                    <div className="space-y-4">
                      {plan.meals.map((m, mi) => (
                        <div key={mi} className="bg-slate-50 p-4 rounded-2xl">
@@ -371,17 +377,18 @@ export const ProductionPlanning: React.FC = () => {
            </div>
            <div className="grid grid-cols-7 bg-slate-50/30">
               {(() => {
-                const days = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-                const start = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+                const year = currentMonth.getFullYear();
+                const month = currentMonth.getMonth();
+                const days = new Date(year, month + 1, 0).getDate();
+                const start = new Date(year, month, 1).getDay();
                 const grid = [];
                 for (let i = 0; i < start; i++) grid.push(<div key={`e-${i}`} className="bg-slate-50/20 border-r border-b border-slate-100 h-32 md:h-44"></div>);
                 for (let d = 1; d <= days; d++) {
-                  const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d);
+                  const date = new Date(year, month, d);
                   const dateStr = getLocalDateString(date);
                   const plan = approvedPlans.find(p => p.date === dateStr);
                   const isToday = new Date().toDateString() === date.toDateString();
                   const hasMissingSpec = plan ? checkHasMissingSpec(plan) : false;
-                  // Explicitly type reducer to avoid unknown operator error
                   const totalPax = plan ? Object.values(plan.headcounts || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0;
 
                   grid.push(
@@ -395,7 +402,7 @@ export const ProductionPlanning: React.FC = () => {
                            {plan.meals.slice(0, 2).map((m, mi) => (
                              <div key={mi} className="bg-white border border-slate-200 rounded-lg p-1 flex items-center gap-1 shadow-sm overflow-hidden">
                                <div className={`w-1 h-3 rounded-full ${plan.isConsumed ? 'bg-slate-300' : 'bg-emerald-500'}`}></div>
-                               <span className="text-[8px] font-black text-slate-700 truncate">{m.dishes[0] || 'Menu Set'}</span>
+                               <span className="text-[8px] font-black text-slate-700 truncate">{m.dishes[0] || 'Menu'}</span>
                              </div>
                            ))}
                            <div className="flex justify-between items-center mt-2">
@@ -420,8 +427,8 @@ export const ProductionPlanning: React.FC = () => {
                  <div className="flex items-center gap-4">
                     <div className="p-3 bg-emerald-500 rounded-2xl text-slate-950"><CalendarIcon size={24} /></div>
                     <div>
-                       <h3 className="text-3xl font-black">{selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
-                       <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Operational Worklog & Menu Management</p>
+                       <h3 className="text-3xl font-black">{selectedDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</h3>
+                       <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Operational Production Worklog</p>
                     </div>
                  </div>
                  <button onClick={() => setIsDayModalOpen(false)} className="p-4 bg-white/10 rounded-2xl hover:bg-rose-500 transition-all"><X size={24} /></button>
