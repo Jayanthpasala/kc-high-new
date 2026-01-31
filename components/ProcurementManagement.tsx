@@ -106,8 +106,8 @@ export const ProcurementManagement: React.FC = () => {
     try {
       const vendor = vendors.find(v => v.id === bulkVendorId);
       const num = `PO-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-      // Fix: Use Typed state values to avoid 'unknown' operator and property errors
-      const lineValues = Object.values(poLineItems);
+      // Fix: Cast Object.values to POLineItem array to ensure correct property access
+      const lineValues = Object.values(poLineItems) as POLineItem[];
       const total = lineValues.reduce((acc, l) => acc + (l.quantity * l.unitPrice), 0);
       const newPO = {
         orderNumber: num,
@@ -149,7 +149,7 @@ export const ProcurementManagement: React.FC = () => {
       {activeTab === 'SHORTAGES' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 no-print">
           {procurements.map(p => (
-            <div key={p.id} onClick={() => toggleSelection(p.id)} className={`p-8 rounded-[3rem] border-2 cursor-pointer transition-all flex flex-col justify-between h-full min-h-[300px] ${selectedIds.has(p.id) ? 'bg-emerald-50 border-emerald-500 ring-4' : 'bg-white hover:shadow-xl'}`}>
+            <div key={p.id} onClick={() => toggleSelection(p.id)} className={`p-8 rounded-[3rem] border-2 cursor-pointer transition-all flex flex-col justify-between h-full min-h-[320px] ${selectedIds.has(p.id) ? 'bg-emerald-50 border-emerald-500 ring-4' : 'bg-white hover:shadow-xl'}`}>
                <div className="flex justify-between items-start mb-6">
                   <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center"><AlertTriangle size={28} /></div>
                   <p className="text-sm font-black text-slate-900">{p.requiredQty} {p.unit}</p>

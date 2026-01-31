@@ -34,7 +34,8 @@ export const Dashboard: React.FC<{ onNavigate: (page: PageId) => void }> = ({ on
       const plans = snap.docs.map(d => d.data() as ProductionPlan);
       const hc = plans.reduce((acc, p) => {
         if (!p.headcounts) return acc;
-        return acc + Object.values(p.headcounts).reduce((a, b) => a + (b || 0), 0);
+        // Fix: Explicitly type reducer parameters to avoid 'unknown' operator errors from Object.values
+        return acc + Object.values(p.headcounts).reduce((a: number, b: any) => a + (Number(b) || 0), 0);
       }, 0);
       setStats(prev => ({ ...prev, todaysProduction: plans.length, totalHeadcountToday: hc }));
     });

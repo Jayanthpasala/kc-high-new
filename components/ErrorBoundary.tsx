@@ -13,9 +13,9 @@ interface State {
 
 /**
  * Standard React Error Boundary component.
- * Inheriting from React.Component directly ensures correct type recognition for setState and props.
+ * Inheriting from Component directly ensures correct type recognition for setState and props in certain TS environments.
  */
-class ErrorBoundary extends React.Component<Props, State> {
+class ErrorBoundary extends Component<Props, State> {
   // Initializing state.
   public state: State = {
     hasError: false,
@@ -32,7 +32,7 @@ class ErrorBoundary extends React.Component<Props, State> {
 
   // Arrow function for lexical binding of 'this'
   private handleReset = () => {
-    // setState is available on the class instance when extending the base React.Component class.
+    // setState is available on the class instance when extending the base Component class.
     this.setState({ hasError: false, error: undefined });
   };
 
@@ -65,7 +65,7 @@ class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    // Access children via this.props which is correctly defined when extending React.Component.
+    // Access children via this.props which is correctly defined when extending Component.
     return this.props.children;
   }
 }

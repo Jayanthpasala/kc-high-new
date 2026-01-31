@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KMS Kitchen Management System</title>
 
-  <!-- Tailwind CDN (ok for now) -->
+  <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 
   <!-- Google Font -->
@@ -36,15 +36,6 @@
 
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
-
-  <!-- 🔐 GLOBAL API KEY SHIM (FIXES DEPLOY GEMINI ERROR) -->
-  <script>
-    window.process = {
-      env: {
-        API_KEY: "AIzaSyBIiFjiWB8I5k7omkMOGJbfHCi3xpXJws4"
-      }
-    };
-  </script>
 
   <!-- ✅ ONLY ONE IMPORT MAP -->
   <script type="importmap">
@@ -79,4 +70,3 @@
 
 </body>
 </html>
-
