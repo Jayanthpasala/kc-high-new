@@ -21,7 +21,8 @@ import {
   Users,
   Info,
   ExternalLink,
-  ClipboardList
+  ClipboardList,
+  Search
 } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { ProductionPlan, Recipe, InventoryItem, Meal, ConsumptionRecord } from '../types';
@@ -65,6 +66,7 @@ export const ProductionPlanning: React.FC = () => {
   const [approvedPlans, setApprovedPlans] = useState<ProductionPlan[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   
+  // Default to present year and month
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayPlan, setDayPlan] = useState<ProductionPlan | null>(null);
@@ -127,6 +129,7 @@ export const ProductionPlanning: React.FC = () => {
     const planId = dayPlan?.id || generateId();
     const dateStr = getLocalDateString(selectedDate);
     
+    // Sync dishDetails back to dishes array
     const processedMeals = editMeals.map(m => ({
       ...m,
       dishes: m.dishDetails?.map(d => d.name) || m.dishes
@@ -170,17 +173,7 @@ export const ProductionPlanning: React.FC = () => {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { 
-              text: `Analyze this menu and population document.
-              
-              Task: Extract the meal types, dishes, and headcount numbers.
-              Population Group Mapping (Return as numbers):
-              - 'teachers': All Staff, Adults, Faculty, Helpers.
-              - 'primary': Primary Wing, Grade 1-12 students.
-              - 'prePrimary': Preschool, KG, Nurseries.
-              - 'additional': Guests, Visitors, Extras.
-              - 'others': Unclassified persons.
-              
-              Format the response as a valid JSON array of objects.` 
+              text: `Analyze this menu and population document. Extract date, meal types, dishes and headcount numbers. Return as valid JSON array.` 
             }
           ]
         },
@@ -191,7 +184,7 @@ export const ProductionPlanning: React.FC = () => {
             items: {
               type: Type.OBJECT,
               properties: {
-                date: { type: Type.STRING, description: "YYYY-MM-DD" },
+                date: { type: Type.STRING },
                 meals: {
                   type: Type.ARRAY,
                   items: {
@@ -212,8 +205,7 @@ export const ProductionPlanning: React.FC = () => {
                     others: { type: Type.NUMBER }
                   }
                 }
-              },
-              required: ["date", "meals", "headcounts"]
+              }
             }
           }
         }
@@ -389,6 +381,7 @@ export const ProductionPlanning: React.FC = () => {
                   const plan = approvedPlans.find(p => p.date === dateStr);
                   const isToday = new Date().toDateString() === date.toDateString();
                   const hasMissingSpec = plan ? checkHasMissingSpec(plan) : false;
+                  // Explicitly type reducer to avoid unknown operator error
                   const totalPax = plan ? Object.values(plan.headcounts || {}).reduce((a: number, b: any) => a + (Number(b) || 0), 0) : 0;
 
                   grid.push(
