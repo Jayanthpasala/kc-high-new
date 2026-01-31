@@ -31,12 +31,12 @@ const generateId = () => Math.random().toString(36).substring(2, 11);
 
 /**
  * Enhanced utility to safely extract JSON from model responses.
- * Specifically designed to handle common AI noise and markdown blocks.
+ * Specifically designed to handle common AI noise and markdown blocks in deployment.
  */
-const safeParseAIResponse = (text: string) => {
+const safeParseAIResponse = (text: string | undefined) => {
   if (!text) throw new Error("The AI returned an empty response.");
   
-  // Clean common AI noise
+  // Clean common AI noise and markdown markers
   const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
   
   try {
@@ -49,6 +49,13 @@ const safeParseAIResponse = (text: string) => {
       const endIdx = cleaned.lastIndexOf(']');
       if (startIdx !== -1 && endIdx !== -1) {
         return JSON.parse(cleaned.substring(startIdx, endIdx + 1));
+      }
+      
+      // Stage 3: Object discovery if it's not an array
+      const objStart = cleaned.indexOf('{');
+      const objEnd = cleaned.lastIndexOf('}');
+      if (objStart !== -1 && objEnd !== -1) {
+        return JSON.parse(cleaned.substring(objStart, objEnd + 1));
       }
     } catch (e2) {
       console.error("Critical JSON failure:", cleaned);
@@ -150,7 +157,7 @@ export const ProductionPlanning: React.FC = () => {
       await setDoc(doc(db, "productionPlans", planId), newPlan);
       setIsDayModalOpen(false);
     } catch (e) {
-      alert("System Sync Error: Failed to push operational data to Cloud.");
+      console.error("Sync error:", e);
     } finally { setIsProcessing(false); }
   };
 
@@ -158,15 +165,10 @@ export const ProductionPlanning: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
     
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      alert("Deployment Configuration Error: Gemini API key is missing from environment.");
-      return;
-    }
-
     setIsProcessing(true);
     try {
-      const ai = new GoogleGenAI({ apiKey });
+      // Strictly using process.env.API_KEY as requested
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const reader = new FileReader();
       const base64 = await new Promise<string>((resolve) => {
         reader.readAsDataURL(file);
@@ -174,21 +176,21 @@ export const ProductionPlanning: React.FC = () => {
       });
 
       const response = await ai.models.generateContent({
-        model: "gemini-3-pro-preview",
+        model: "gemini-3-flash-preview",
         contents: {
           parts: [
             { inlineData: { data: base64, mimeType: file.type } },
             { 
-              text: `Extract the meal schedule and population counts for each day.
+              text: `Extract the meal schedule and population counts for each day from this document.
               
-              Headcount/Population Mapping:
-              1. 'teachers' = Staff, Faculty, Drivers, Helpers, Adults.
-              2. 'primary' = Grade 1-12 students, Primary wing.
-              3. 'prePrimary' = Preschool, Kindergarten, Nurseries.
-              4. 'additional' = Guests, Visitors, Extra portions.
-              5. 'others' = Any other specified groups.
+              Headcount Mapping:
+              - 'teachers': Staff, Faculty, Adults.
+              - 'primary': Older students (Grade 1+).
+              - 'prePrimary': Preschoolers, Nursery.
+              - 'additional': Guests, Extra portions.
+              - 'others': Uncategorized groups.
               
-              Respond with a STRICT JSON array of objects. Use numeric values only for headcounts.` 
+              Required format: JSON array of objects with strict numeric headcounts.` 
             }
           ]
         },
@@ -227,7 +229,7 @@ export const ProductionPlanning: React.FC = () => {
         }
       });
 
-      const extracted = safeParseAIResponse(response.text || "[]");
+      const extracted = safeParseAIResponse(response.text);
       const plans: ProductionPlan[] = extracted.map((d: any) => ({
         id: generateId(),
         date: d.date,
@@ -249,8 +251,8 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans(plans);
       setView('REVIEW');
     } catch (err: any) {
-      console.error("AI Sync Error:", err);
-      alert("AI Extraction Failed: The AI could not parse this document in the deployment environment. Please ensure the image is clear and under 4MB.");
+      console.error("AI Extraction Error:", err);
+      alert("AI Sync Failed: The system could not extract data from this file. Ensure the document is clear and the API key is correctly configured in your deployment settings.");
     } finally { setIsProcessing(false); }
   };
 
@@ -269,7 +271,7 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans([]);
       setView('CALENDAR');
     } catch (e) {
-      alert("Cloud Sync Failure.");
+      console.error("Sync failure:", e);
     } finally { setIsProcessing(false); }
   };
 
@@ -305,9 +307,9 @@ export const ProductionPlanning: React.FC = () => {
       batch.update(doc(db, "productionPlans", plan.id), { isConsumed: true, headcounts: editHeadcounts, meals: editMeals });
       await batch.commit();
       setIsDayModalOpen(false);
-      alert("Operational Cycle Closed: Inventory stocks updated.");
+      alert("Success: Inventory levels adjusted.");
     } catch (e) {
-      alert("Ledger Update Failed.");
+      console.error("Ledger error:", e);
     } finally { setIsProcessing(false); }
   };
 
@@ -318,7 +320,7 @@ export const ProductionPlanning: React.FC = () => {
           <h2 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
              <CalendarCheck className="text-emerald-500" size={32} /> Production Hub
           </h2>
-          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Operational Menu & Headcount Synchronization</p>
+          <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-1">Menu & Population Analytics</p>
         </div>
         <div className="flex gap-4">
           <button onClick={() => setView('UPLOAD')} className="bg-slate-900 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-emerald-600 transition-all">
@@ -336,7 +338,7 @@ export const ProductionPlanning: React.FC = () => {
         <div className="fixed inset-0 z-[110] bg-slate-950/60 backdrop-blur-md flex items-center justify-center p-6 text-center animate-in fade-in duration-300">
           <div className="bg-white p-12 rounded-[3.5rem] shadow-2xl max-w-sm w-full">
             <Loader2 className="animate-spin mx-auto text-emerald-500 mb-6" size={64} />
-            <h3 className="text-2xl font-black text-slate-900">AI Operational Mapping...</h3>
+            <h3 className="text-2xl font-black text-slate-900">AI Processing...</h3>
             <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest mt-4">Extracting Menu & Populations</p>
           </div>
         </div>
@@ -346,8 +348,8 @@ export const ProductionPlanning: React.FC = () => {
         <div className="max-w-4xl mx-auto space-y-12 py-10 animate-in slide-in-from-bottom-10 duration-500">
            <div className="text-center space-y-4">
               <div className="w-24 h-24 bg-emerald-50 text-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto shadow-sm"><FileUp size={48} /></div>
-              <h3 className="text-4xl font-black text-slate-900 tracking-tighter">AI Menu Sync</h3>
-              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Upload weekly documents to auto-link dishes and population counts for accurate production cycles.</p>
+              <h3 className="text-4xl font-black text-slate-900 tracking-tighter">AI Operational Sync</h3>
+              <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest max-w-sm mx-auto">Import weekly schedules to auto-link dishes and population counts for accurate production logs.</p>
            </div>
            <div className="relative group">
               <input type="file" id="schedule-upload" className="hidden" accept=".csv,application/pdf,image/*" onChange={handleFileUpload} />
@@ -362,7 +364,7 @@ export const ProductionPlanning: React.FC = () => {
       {view === 'REVIEW' && (
         <div className="space-y-10 animate-in fade-in duration-500">
            <div className="flex justify-between items-center">
-              <h3 className="text-2xl font-black text-slate-900 uppercase">Review AI Extractions</h3>
+              <h3 className="text-2xl font-black text-slate-900 uppercase">Audit AI Extractions</h3>
               <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 ${missingRecipesCount > 0 ? 'bg-amber-50 text-amber-600 border-amber-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}>
                  {missingRecipesCount > 0 ? `${missingRecipesCount} Unmapped Dishes` : 'System Verified'}
               </div>
@@ -395,7 +397,7 @@ export const ProductionPlanning: React.FC = () => {
                        ))}
                      </div>
                      <div className="mt-6 pt-6 border-t border-slate-100">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Population Audit</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Headcount Verification</p>
                         <div className="grid grid-cols-5 gap-1 text-center bg-slate-50 p-3 rounded-2xl">
                            <div><p className="text-[7px] font-black text-slate-400 uppercase">Staff</p><p className="text-xs font-black">{plan.headcounts?.teachers}</p></div>
                            <div><p className="text-[7px] font-black text-slate-400 uppercase">Prim.</p><p className="text-xs font-black">{plan.headcounts?.primary}</p></div>
@@ -412,7 +414,7 @@ export const ProductionPlanning: React.FC = () => {
            <div className="fixed bottom-10 right-10 flex gap-4 no-print z-50">
               <button onClick={() => { setPendingPlans([]); setView('CALENDAR'); }} className="px-10 py-5 bg-white border-2 border-slate-200 text-slate-400 rounded-3xl font-black uppercase text-xs tracking-widest shadow-xl hover:bg-slate-50">Discard All</button>
               <button onClick={handleApproveAll} disabled={missingRecipesCount > 0} className={`px-10 py-5 rounded-3xl font-black uppercase text-xs tracking-widest shadow-2xl flex items-center gap-3 transition-all ${missingRecipesCount > 0 ? 'bg-slate-300 text-white cursor-not-allowed' : 'bg-slate-900 text-white hover:bg-emerald-600'}`}>
-                <CheckCircle2 size={20} /> Approve & Sync to Cloud
+                <CheckCircle2 size={20} /> Approve & Sync Cloud
               </button>
            </div>
         </div>
@@ -504,13 +506,13 @@ export const ProductionPlanning: React.FC = () => {
                        ))}
                        
                        <div className="space-y-6 pt-6 border-t border-slate-100">
-                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-3"><Users size={16}/> Attendance Registry (Types of People)</h5>
+                          <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-3"><Users size={16}/> Daily Attendance Breakdown</h5>
                           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                              {[
-                               { label: 'Staff/Teachers', key: 'teachers' as const },
+                               { label: 'Staff/Fac.', key: 'teachers' as const },
                                { label: 'Primary', key: 'primary' as const },
                                { label: 'Pre-Prim.', key: 'prePrimary' as const },
-                               { label: 'Addl.', key: 'additional' as const },
+                               { label: 'Guests', key: 'additional' as const },
                                { label: 'Others', key: 'others' as const }
                              ].map(cat => (
                                 <div key={cat.key} className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
@@ -532,13 +534,13 @@ export const ProductionPlanning: React.FC = () => {
 
                        {!dayPlan.isConsumed && (
                           <div className="space-y-4">
-                             <button onClick={handleSaveDay} className="w-full bg-white border-2 border-slate-900 py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all">Save Changes</button>
+                             <button onClick={handleSaveDay} className="w-full bg-white border-2 border-slate-900 py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-slate-50 transition-all">Save Daily Registry</button>
                              <button onClick={() => toggleConsumption(dayPlan)} className="w-full bg-slate-900 text-white py-6 rounded-3xl font-black uppercase text-xs tracking-widest hover:bg-emerald-600 transition-all shadow-2xl flex items-center justify-center gap-3">
-                                <UserCheck size={20} /> Finalize Production & Deduct Stocks
+                                <UserCheck size={20} /> Finalize Production & Deduct Stock
                              </button>
                           </div>
                        )}
-                       <button onClick={async () => { if(confirm("Permanently delete this operational record?")) { await deleteDoc(doc(db, "productionPlans", dayPlan.id)); setIsDayModalOpen(false); }}} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest">Delete Entry</button>
+                       <button onClick={async () => { if(confirm("Permanently delete this record?")) { await deleteDoc(doc(db, "productionPlans", dayPlan.id)); setIsDayModalOpen(false); }}} className="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-widest">Delete Entry</button>
                     </div>
                  ) : (
                     <div className="py-20 text-center space-y-6">
