@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Upload, 
@@ -103,10 +104,18 @@ export const ProductionPlanning: React.FC = () => {
     return `${year}-${m}-${d}`;
   };
 
+  // Robust check for missing master recipes in a plan
   const checkHasMissingSpec = (plan: ProductionPlan) => {
-    return plan.meals.some(m => 
-      m.dishes.some(d => !recipes.some(r => r.name.toLowerCase().trim() === d.toLowerCase().trim()))
-    );
+    const existingRecipeNames = new Set(recipes.map(r => r.name.toLowerCase().trim()));
+    
+    return plan.meals.some(m => {
+      // Check both dishes array and dishDetails
+      const namesToCheck: string[] = [];
+      if (m.dishes) m.dishes.forEach(d => { if (d) namesToCheck.push(d); });
+      if (m.dishDetails) m.dishDetails.forEach(dd => { if (dd.name) namesToCheck.push(dd.name); });
+      
+      return namesToCheck.some(name => !existingRecipeNames.has(name.toLowerCase().trim()));
+    });
   };
 
   const generatePDFReport = (plan: ProductionPlan) => {
@@ -405,7 +414,7 @@ export const ProductionPlanning: React.FC = () => {
                         <div key={mi} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
                             <p className="text-[9px] font-black text-emerald-600 uppercase mb-2">{m.mealType}</p>
                             <div className="space-y-2">
-                              {m.dishes.map((d, di) => {
+                              {(m.dishes || []).map((d, di) => {
                                 const isMapped = recipes.some(r => r.name.toLowerCase().trim() === d.toLowerCase().trim());
                                 return (
                                   <div key={di} className="flex items-center justify-between gap-2">
@@ -512,12 +521,11 @@ export const ProductionPlanning: React.FC = () => {
                            {plan.meals.slice(0, 2).map((m, mi) => (
                              <div key={mi} className="bg-white border border-slate-200 rounded-lg p-1 flex items-center gap-1 shadow-sm overflow-hidden">
                                <div className={`w-1 h-3 rounded-full ${plan.isConsumed ? 'bg-slate-300' : 'bg-emerald-500'}`}></div>
-                               <span className="text-[8px] font-black text-slate-700 truncate">{m.dishes[0] || 'Menu'}</span>
+                               <span className="text-[8px] font-black text-slate-700 truncate">{(m.dishDetails && m.dishDetails.length > 0) ? m.dishDetails[0].name : (m.dishes ? m.dishes[0] : 'Menu')}</span>
                              </div>
                            ))}
                            <div className="flex items-center justify-between mt-2">
                              <div className="text-[7px] font-black uppercase text-slate-300">{plan.isConsumed ? '✓ Consumed' : 'Pending'}</div>
-                             {/* Fixed: Wrapped AlertTriangle in a span with the title attribute as the icon component doesn't support the title prop directly */}
                              {hasMissing && <span title="Missing Recipe Mapping"><AlertTriangle size={12} className="text-amber-500" /></span>}
                            </div>
                          </div>
