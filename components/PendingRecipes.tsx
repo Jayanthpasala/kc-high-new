@@ -26,13 +26,13 @@ export const PendingRecipes: React.FC = () => {
   const [completingDish, setCompletingDish] = useState<string | null>(null);
 
   useEffect(() => {
-    // Listen to ALL production plans (approved or otherwise) to catch unmapped dishes early
+    // Listen to ALL production plans to catch unmapped dishes early, before or after approval
     const qPlans = query(collection(db, "productionPlans"));
     const unsubPlans = onSnapshot(qPlans, (snap) => {
       setPlans(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionPlan)));
     });
 
-    // Listen to all master recipes
+    // Listen to all master recipes for cross-referencing
     const unsubRecipes = onSnapshot(collection(db, "recipes"), (snap) => {
       setRecipes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recipe)));
       setLoading(false);
@@ -44,39 +44,47 @@ export const PendingRecipes: React.FC = () => {
     };
   }, []);
 
-  // Robust computation of unique dishes that appear in plans but are NOT in recipes
+  // Compute unique dishes that appear in plans but are NOT in recipes
   const pendingDishes = useMemo(() => {
-    // We map dish names to their latest plan date for helpful context
-    const missingMap = new Map<string, { latestDate: string, planCount: number }>();
+    const missingMap = new Map<string, { latestDate: string, planCount: number, originalCasing: string }>();
     
+    // Create a lookup set of existing recipe names for efficient comparison
     const existingRecipeNames = new Set(
-      recipes.map(r => r.name.toLowerCase().trim())
+      recipes.map(r => r.name?.toLowerCase().trim()).filter(Boolean)
     );
 
     plans.forEach(plan => {
-      plan.meals.forEach(meal => {
-        // Collect all possible dish names from this meal
-        const rawNames: string[] = [];
-        if (meal.dishes) meal.dishes.forEach(d => { if (d) rawNames.push(d); });
-        if (meal.dishDetails) meal.dishDetails.forEach(dd => { if (dd.name) rawNames.push(dd.name); });
+      if (!plan.meals || !Array.isArray(plan.meals)) return;
 
-        rawNames.forEach(name => {
-          const trimmedName = name.trim();
-          if (!trimmedName) return;
-          
-          const key = trimmedName.toLowerCase();
+      plan.meals.forEach(meal => {
+        // Collect all possible dish names from this meal entry
+        const candidates = new Set<string>();
+        
+        // Check simple string array dishes
+        if (meal.dishes && Array.isArray(meal.dishes)) {
+          meal.dishes.forEach(d => { if (typeof d === 'string' && d.trim()) candidates.add(d.trim()); });
+        }
+        
+        // Check detailed dish objects
+        if (meal.dishDetails && Array.isArray(meal.dishDetails)) {
+          meal.dishDetails.forEach(dd => { if (dd.name && dd.name.trim()) candidates.add(dd.name.trim()); });
+        }
+
+        candidates.forEach(name => {
+          const key = name.toLowerCase();
           if (!existingRecipeNames.has(key)) {
-            // It's a missing recipe. Track it.
-            const existing = missingMap.get(key);
-            if (existing) {
+            const existingEntry = missingMap.get(key);
+            if (existingEntry) {
               missingMap.set(key, {
-                latestDate: plan.date > existing.latestDate ? plan.date : existing.latestDate,
-                planCount: existing.planCount + 1
+                latestDate: plan.date > existingEntry.latestDate ? plan.date : existingEntry.latestDate,
+                planCount: existingEntry.planCount + 1,
+                originalCasing: existingEntry.originalCasing // Keep the first found casing
               });
             } else {
               missingMap.set(key, {
-                latestDate: plan.date,
-                planCount: 1
+                latestDate: plan.date || 'Undated',
+                planCount: 1,
+                originalCasing: name
               });
             }
           }
@@ -84,32 +92,17 @@ export const PendingRecipes: React.FC = () => {
       });
     });
 
-    // Convert map to array of displayable objects
-    return Array.from(missingMap.entries())
-      .map(([key, data]) => {
-        // Try to find the original casing from the plans
-        let originalCasing = key;
-        plans.some(p => p.meals.some(m => {
-          const found = (m.dishes || []).find(d => d.toLowerCase().trim() === key) || 
-                        (m.dishDetails || []).find(dd => dd.name.toLowerCase().trim() === key)?.name;
-          if (found) originalCasing = found;
-          return !!found;
-        }));
-
-        return {
-          name: originalCasing,
-          ...data
-        };
-      })
-      .filter(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
-      .sort((a, b) => b.latestDate.localeCompare(a.latestDate)); // Show recently added/scheduled items first
+    // Convert map to filterable array
+    return Array.from(missingMap.values())
+      .filter(item => item.originalCasing.toLowerCase().includes(searchTerm.toLowerCase()))
+      .sort((a, b) => b.latestDate.localeCompare(a.latestDate));
   }, [plans, recipes, searchTerm]);
 
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 space-y-4">
         <Loader2 className="animate-spin text-emerald-500" size={48} />
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Auditing Master Specifications...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Synchronizing Production Metadata...</p>
       </div>
     );
   }
@@ -121,15 +114,15 @@ export const PendingRecipes: React.FC = () => {
           onClick={() => setCompletingDish(null)}
           className="flex items-center gap-2 text-slate-400 hover:text-slate-900 font-black uppercase text-[10px] tracking-widest transition-colors mb-4"
         >
-          <X size={16} /> Cancel Specification
+          <X size={16} /> Close Specification
         </button>
         <div className="bg-amber-50 p-10 rounded-[2.5rem] border border-amber-100 flex flex-col sm:flex-row items-center gap-6">
             <div className="w-16 h-16 bg-amber-500 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-amber-500/20 shrink-0">
               <ChefHat size={32} />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-amber-900 tracking-tight uppercase">Map Material Spec: {completingDish}</h2>
-              <p className="text-amber-700/70 font-bold text-sm">Linking this dish to raw materials to enable automated production deductions.</p>
+              <h2 className="text-2xl font-black text-amber-900 tracking-tight uppercase">Define Material Link: {completingDish}</h2>
+              <p className="text-amber-700/70 font-bold text-sm">Create a master specification for this dish to enable automated inventory deductions.</p>
             </div>
         </div>
         <RecipeManagement initialDishName={completingDish} onComplete={() => setCompletingDish(null)} />
@@ -145,7 +138,7 @@ export const PendingRecipes: React.FC = () => {
             <ClipboardList className="text-amber-500" size={32} />
             Pending Recipes
           </h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Dishes present in production schedules currently lacking a master specification.</p>
+          <p className="text-slate-500 font-bold mt-1 uppercase text-[10px] tracking-widest">Active menu items lacking standardized material specifications.</p>
         </div>
       </div>
 
@@ -154,7 +147,7 @@ export const PendingRecipes: React.FC = () => {
           <Search className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
           <input 
             type="text" 
-            placeholder="Search unmapped dishes..." 
+            placeholder="Search unmapped dish titles..." 
             className="w-full pl-14 pr-6 py-4 rounded-2xl bg-slate-50 border-none focus:bg-white focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-slate-900 font-bold"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -167,9 +160,9 @@ export const PendingRecipes: React.FC = () => {
           <div className="bg-white w-24 h-24 rounded-3xl shadow-xl flex items-center justify-center mx-auto mb-6 text-emerald-500 border border-slate-100">
             <CheckCircle size={40} />
           </div>
-          <h4 className="text-2xl font-black text-slate-900 tracking-tight">System Synchronized</h4>
+          <h4 className="text-2xl font-black text-slate-900 tracking-tight">Specifications Fully Mapped</h4>
           <p className="text-slate-500 max-w-xs mx-auto mt-2 font-black text-[10px] uppercase tracking-widest leading-loose">
-            Every dish currently appearing in your production plans is linked to a master recipe.
+            All dishes currently present in production plans are linked to master recipes.
           </p>
         </div>
       ) : (
@@ -177,30 +170,28 @@ export const PendingRecipes: React.FC = () => {
           {pendingDishes.map((item, idx) => (
             <div key={idx} className="bg-white rounded-[2.5rem] border-2 border-slate-100 p-8 shadow-sm hover:shadow-2xl hover:border-amber-400 transition-all group flex flex-col h-full border-t-8 border-t-amber-400">
               <div className="flex justify-between items-start mb-6">
-                <div className="w-14 h-14 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center group-hover:bg-amber-500 group-hover:text-white transition-all duration-300">
-                  <ChefHat size={28} />
-                </div>
+                <div className="w-14 h-14 bg-amber-50 text-amber-600 p-4 rounded-2xl"><ChefHat size={28} /></div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className="text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-600 px-3 py-1 rounded-lg">Missing Spec</span>
+                  <span className="text-[9px] font-black uppercase tracking-widest bg-amber-100 text-amber-600 px-3 py-1 rounded-lg">Unmapped</span>
                   <span className="text-[8px] font-bold text-slate-400 uppercase flex items-center gap-1"><Clock size={10} /> {item.planCount} plan(s)</span>
                 </div>
               </div>
               
-              <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight flex-1">{item.name}</h3>
+              <h3 className="text-2xl font-black text-slate-900 mb-6 leading-tight flex-1">{item.originalCasing}</h3>
               
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-between mb-8">
                 <div className="flex items-center gap-2 text-slate-500">
                    <Calendar size={14} />
-                   <span className="text-[10px] font-black uppercase tracking-wider">Scheduled: {item.latestDate}</span>
+                   <span className="text-[10px] font-black uppercase tracking-wider">Latest Schedule: {item.latestDate}</span>
                 </div>
               </div>
 
               <div className="mt-auto">
                 <button 
-                  onClick={() => setCompletingDish(item.name)}
+                  onClick={() => setCompletingDish(item.originalCasing)}
                   className="w-full bg-slate-900 text-white px-6 py-4 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all shadow-xl shadow-slate-900/10 active:scale-95"
                 >
-                  Define Materials <ArrowRight size={14} />
+                  Create Specification <ArrowRight size={14} />
                 </button>
               </div>
             </div>
@@ -211,9 +202,9 @@ export const PendingRecipes: React.FC = () => {
       <div className="bg-slate-50 p-8 rounded-[3rem] border-2 border-dashed border-slate-200 flex items-start gap-4">
         <Info className="text-blue-500 shrink-0 mt-0.5" size={24} />
         <div>
-          <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">System Reliability Note</h4>
+          <h4 className="text-sm font-black text-slate-900 uppercase tracking-tight">Sync Integrity Protocol</h4>
           <p className="text-slate-500 text-xs font-medium leading-relaxed mt-1">
-            Production cycles can only be finalized for inventory deductions if every dish in the schedule is mapped to a master recipe specification. This view scans your entire database to identify these gaps.
+            Production plans cannot be finalized for stock deduction until all menu items are correctly linked to a Master Specification. This registry identifies dishes found in any schedule (Draft or Approved) that are missing from the Recipe database.
           </p>
         </div>
       </div>

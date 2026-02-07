@@ -75,10 +75,13 @@ export const ProductionPlanning: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const q = query(collection(db, "productionPlans"), where("isApproved", "==", true));
-    const unsubPlans = onSnapshot(q, (snap) => {
+    // Sync all approved plans for display
+    const qApproved = query(collection(db, "productionPlans"), where("isApproved", "==", true));
+    const unsubPlans = onSnapshot(qApproved, (snap) => {
       setApprovedPlans(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductionPlan)));
     });
+
+    // Sync recipes to detect mapping gaps
     const unsubRecipes = onSnapshot(collection(db, "recipes"), (snap) => {
       setRecipes(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Recipe)));
     });
@@ -106,13 +109,13 @@ export const ProductionPlanning: React.FC = () => {
 
   // Robust check for missing master recipes in a plan
   const checkHasMissingSpec = (plan: ProductionPlan) => {
-    const existingRecipeNames = new Set(recipes.map(r => r.name.toLowerCase().trim()));
+    if (!plan.meals) return false;
+    const existingRecipeNames = new Set(recipes.map(r => r.name?.toLowerCase().trim()).filter(Boolean));
     
     return plan.meals.some(m => {
-      // Check both dishes array and dishDetails
       const namesToCheck: string[] = [];
-      if (m.dishes) m.dishes.forEach(d => { if (d) namesToCheck.push(d); });
-      if (m.dishDetails) m.dishDetails.forEach(dd => { if (dd.name) namesToCheck.push(dd.name); });
+      if (m.dishes) m.dishes.forEach(d => { if (typeof d === 'string' && d.trim()) namesToCheck.push(d.trim()); });
+      if (m.dishDetails) m.dishDetails.forEach(dd => { if (dd.name && dd.name.trim()) namesToCheck.push(dd.name.trim()); });
       
       return namesToCheck.some(name => !existingRecipeNames.has(name.toLowerCase().trim()));
     });
@@ -220,7 +223,7 @@ export const ProductionPlanning: React.FC = () => {
       await setDoc(doc(db, "productionPlans", planId), newPlan);
       setIsDayModalOpen(false);
     } catch (e) {
-      console.error("Cloud Error", e);
+      console.error("Cloud Sync Error", e);
     } finally { setIsProcessing(false); }
   };
 
@@ -258,7 +261,7 @@ export const ProductionPlanning: React.FC = () => {
       setIsDayModalOpen(false);
       alert("Inventory synced successfully.");
     } catch (e) {
-      console.error(e);
+      console.error("Inventory Finalization Error", e);
     } finally { setIsProcessing(false); }
   };
 
@@ -327,26 +330,27 @@ export const ProductionPlanning: React.FC = () => {
       setPendingPlans(extracted.map((d: any) => ({
         id: generateId(),
         date: d.date,
-        meals: d.meals.map((m: any) => ({ ...m, dishDetails: (m.dishes || []).map((dn: string) => ({ name: dn, amountCooked: 0 })) })),
+        meals: d.meals.map((m: any) => ({ ...m, dishes: m.dishes || [], dishDetails: (m.dishes || []).map((dn: string) => ({ name: dn, amountCooked: 0 })) })),
         headcounts: d.headcounts || { teachers: 0, primary: 0, prePrimary: 0, additional: 0, others: 0 },
         isApproved: false,
         createdAt: Date.now()
       })));
       setView('REVIEW');
     } catch (err) {
-      alert("Upload error.");
+      alert("AI Processing Error: Check document formatting.");
     } finally { setIsProcessing(false); }
   };
 
   const selectRecipeForDish = (mi: number, di: number, recipeName: string) => {
     const updated = [...editMeals];
+    if (!updated[mi].dishDetails) updated[mi].dishDetails = [];
     updated[mi].dishDetails![di].name = recipeName;
     setEditMeals(updated);
     setActiveSearchIndex(null);
   };
 
   const filteredRecipes = useMemo(() => {
-    return recipes.filter(r => r.name.toLowerCase().includes(recipeSearchTerm.toLowerCase()));
+    return recipes.filter(r => r.name?.toLowerCase().includes(recipeSearchTerm.toLowerCase()));
   }, [recipes, recipeSearchTerm]);
 
   return (
@@ -415,7 +419,7 @@ export const ProductionPlanning: React.FC = () => {
                             <p className="text-[9px] font-black text-emerald-600 uppercase mb-2">{m.mealType}</p>
                             <div className="space-y-2">
                               {(m.dishes || []).map((d, di) => {
-                                const isMapped = recipes.some(r => r.name.toLowerCase().trim() === d.toLowerCase().trim());
+                                const isMapped = recipes.some(r => r.name?.toLowerCase().trim() === d.toLowerCase().trim());
                                 return (
                                   <div key={di} className="flex items-center justify-between gap-2">
                                     <div className="text-xs font-bold text-slate-700 truncate">• {d}</div>
@@ -594,7 +598,7 @@ export const ProductionPlanning: React.FC = () => {
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                    {(m.dishDetails || []).map((dish, di) => {
-                                      const recipeMatch = recipes.find(r => r.name.toLowerCase().trim() === dish.name.toLowerCase().trim());
+                                      const recipeMatch = recipes.find(r => r.name?.toLowerCase().trim() === dish.name?.toLowerCase().trim());
                                       const isMappingActive = activeSearchIndex?.mi === mi && activeSearchIndex?.di === di;
 
                                       return (
@@ -678,6 +682,7 @@ export const ProductionPlanning: React.FC = () => {
                                                    value={dish.amountCooked || ''} 
                                                    onChange={e => { 
                                                      const up = [...editMeals]; 
+                                                     if (!up[mi].dishDetails) up[mi].dishDetails = [];
                                                      up[mi].dishDetails![di].amountCooked = parseFloat(e.target.value) || 0; 
                                                      setEditMeals(up); 
                                                    }} 
